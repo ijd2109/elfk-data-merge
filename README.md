@@ -1,5 +1,5 @@
-# danl
-private danl repo
+# ELFK Data Merge
+Documentation pertaining to scripts run to merge the ELFK data into one database.
 
 README Contents:
 INTRO. General comments
