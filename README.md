@@ -6,13 +6,15 @@ INTRO. General comments
 A-I. Notes regarding scripts for:
     a) tidying raw data (1 specific to each qualtrics questionnaire)
     b) scaling tidy data and writing out csv and sav files (finalized)
-    
-#####################################################################
-# Data was extracted from qualtrics on March 8, 2019. ###############
-#-------------------------------------------------------------------#
-# All dates are converted to type "Date", with internal calculation #
-# of days proceeding from origin of 01/01/1970 ######################
-#####################################################################
+   
+   
+    #####################################################################
+    # Data was extracted from qualtrics on March 8, 2019. ###############
+    #-------------------------------------------------------------------#
+    # All dates are converted to type "Date", with internal calculation #
+    # of days proceeding from origin of 01/01/1970 ######################
+    #####################################################################
+
 INTRO - General Comments
 I. If reading in scaled .csv files, use StringsAsFactors = FALSE
 II. If reading in a .csv file, the date will have reverted back to 
