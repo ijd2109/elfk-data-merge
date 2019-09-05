@@ -1,0 +1,61 @@
+---
+title: "Merge new ELFK data"
+author: "Ian Douglas"
+date: "6/25/2019"
+output: html_document
+---
+#README: Script for merging new data into existing ELFK database. Requires custom functions, which are defined below.
+
+# 1. Define necessary functions.
+```{r}
+#########################################
+# ELFK.identsubid()                     #
+#---------------------------------------#
+#Standardize subject ID numbers for ELFK#
+#---------------------------------------#
+#***Returns a new dataframe!            #
+#########################################
+
+ELFK.identsubid <- function(data, id.variable.name) {
+  if (class(id.variable.name) != "character") {
+    stop("variable names must be character strings")
+  } else {
+    i <- which(names(data)==id.variable.name)
+    tmp.df <- as.character(data[,i])
+    tmp.df2<- data %>% 
+      mutate_at(i, 
+                function(x) as.integer(str_extract(x,pattern ="\\(?[0-9,.]+\\)?"))) %>% 
+      mutate_at(i, 
+                function(x) paste0(ifelse(nchar(x)==1,
+                                          "EL00",ifelse(nchar(x)==2,
+                                                        "EL0","EL")),x))
+  }
+  return(tmp.df2)
+  
+}
+```
+
+# 2. Load in the existing data
+```{r}
+elfk.data <- read_file("[FILE PATH TO YOUR LOCAL COPY OF ELFK DATA]")
+```
+
+# 3. Format your new data
+```{r}
+#IF your new data is called "my_data", and the "IDENT_SUBID" variable is valled "id", run the following to format subject ID column to enable the merge script to function properly
+
+# :: (1) Rename your subject id column to "IDENT_SUBID"
+my_data_2 <- my_data %>% 
+  rename_at(grep("id",names(.)), function(x) replace(x,1,"IDENT_SUBID"))
+
+# :: (2) Format the actual subject IDs
+my_data_3 <- my_data_2 %>% ELFK.identsubid("IDENT_SUBID")
+```
+
+# 4. Merge with the existing database
+```{r}
+newdata <- merge(elfk.data, my_data_3, by = "IDENT_SUBID", all=TRUE)
+```
+
+
+
