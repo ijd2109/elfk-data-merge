@@ -1,0 +1,51 @@
+---
+title: "CRPR scoring"
+author: "Ian Douglas"
+date: "4/15/2019"
+output: html_document
+---
+#Load in tidy CRPR data 
+```{r}
+#NOTE***This data file as of 4/26/19 contains extra cases, as we determine which duplicates to keep. They are flagged with an subject ID number that begins with 9 in the hundreths place.
+(library(tidyverse))
+rm(list=ls())
+df<-readRDS("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/CRPR_tidy.rds")
+```
+
+#Score means
+```{r}
+#Restrict Subscale Mean
+df1 <- df %>%
+  group_by(IDENT_SUBID) %>%
+  mutate("CRPR_RESTRICT_MEAN" = mean(
+    c(CRPR_1, CRPR_2, CRPR_3, CRPR_6, CRPR_10, CRPR_12, 
+      CRPR_14, CRPR_15, CRPR_16, CRPR_22, CRPR_27, CRPR_28, 
+      CRPR_29, CRPR_31, CRPR_32, CRPR_33, CRPR_34, CRPR_35, 
+      CRPR_36, CRPR_37, CRPR_38, CRPR_40),
+    na.rm=TRUE)) %>%
+  ungroup()
+```
+
+```{r}
+#Nurture Subscale Mean
+df2 <- df1 %>%
+  group_by(IDENT_SUBID) %>%
+  mutate("CRPR_NURTURE_MEAN" = mean(
+    c(CRPR_4, CRPR_5, CRPR_7,CRPR_8, CRPR_9, CRPR_11, CRPR_13,
+      CRPR_17, CRPR_18, CRPR_19, CRPR_20, CRPR_21, CRPR_23, 
+      CRPR_24, CRPR_25, CRPR_26, CRPR_30, CRPR_39),
+    na.rm=TRUE)) %>%
+  ungroup()
+```
+
+#Done!
+#Write out scored data
+```{r}
+#R file is ready as is.
+write_rds(df2,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/CRPR_final.rds")
+#csv and sav files need to be converted to all characters
+(library(haven))
+df3 <- df2 %>% mutate_at(1:ncol(df2), function(x) as.character(x))
+write_csv(df3, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/csv/CRPR_final.csv")
+write_sav(df3, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/SPSS/CRPR_final.sav")
+```

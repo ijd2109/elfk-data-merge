@@ -1,0 +1,178 @@
+---
+title: "PQ tidying"
+author: "Ian Douglas"
+date: "5/30/2019"
+output: html_document
+---
+#load in raw data
+```{r}
+rm(list=ls())
+suppressPackageStartupMessages(library(tidyverse))
+df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/PI/PQ raw.csv", stringsAsFactors = FALSE)
+```
+#View the ID field to examine fake/test ddata
+```{r}
+df$Q1[1:10] #real entries begin on line 2
+tail(df$Q1) #no fake data
+```
+#Extract desired data
+```{r}
+df1 <- df[-1:-2,] %>% dplyr::select(RecordedDate, starts_with("Q"))
+```
+#Search for duplicates in theID field
+```{r}
+#First see, if any entries contain all letters
+where<-all.letters(df1$Q1)
+# [1] 23
+df2 <- df1[-where,]#remove the entry
+View(id.search(df2, "Q1", "RecordedDate"))
+```
+#index entries to delete
+```{r}
+ids.to.remove <- c(
+  which(df2$Q1 == "097" & df2$RecordedDate == "2017-05-30 11:30:18"), #missingness
+  which(df2$Q1 == "El122" & df2$RecordedDate == "2018-05-03 17:03:35"), # missingness
+  which(df2$Q1 == "EL104" & df2$RecordedDate == "2018-06-13 17:45:17"),#missingness
+  which(df2$Q1 == "EL105" & df2$RecordedDate == "2018-06-13 17:46:31")
+)
+#FIRST:
+#take the last three columns from the above entry and merge it with the correct one.
+df2[which(df2$Q1 == "EL105" & df2$RecordedDate == "2018-05-29 16:31:25"), 22:25] <-
+df2[which(df2$Q1 == "EL104" & df2$RecordedDate == "2018-06-13 17:45:17"), 22:25]
+#Next, delete the unwanted rows
+df3 <- df2[-ids.to.remove,]
+#lastly, swith the subject ID for 104 and 105, whose (retained) entries switched the subject ID
+df3$Q1[c(grep("104", df3$Q1),grep("105", df3$Q1))] <- c("EL105", "EL104")
+```
+#Format subject ID and date columns
+```{r}
+df4 <- df3 %>% ELFK.identsubid("Q1") %>% format.date("RecordedDate")
+```
+#Add in the variable names
+```{r}
+#first create an empty column
+df5 <- data.frame(df4[1:5],"PQ_3_AGEFOSTER" = NA_integer_, df4[6:ncol(df4)])
+#create the list of variable names in the correct order
+vnam <- c("PQ_DATE_COMPLETE", "IDENT_SUBID",
+          "PQ_1_COUNTRYBORN", "PQ_2_CITYBORN", "PQ_3_AGEORPH", 
+          "PQ_3_AGEFOSTER","PQ_4_AGEADOPT","PQ_5_GENHEALTHADOPT",
+          "PQ_6A_GROCHART","PQ_6B_PERCENTILE","PQ_7A_HEALTHCONS",
+          "PQ_7B_EXPLAN","PQ_8A_BEHCONS","PQ_8B_EXPLAN",
+          "PQ_9_STRENGTH", "PQ_10A_HEALTHCONS_OVERC", "PQ_10B_EXPLAN",
+          "PQ_11A_BEHACONS_OVERC","PQ_11B_EXPLAN","PQ_12A_OTHERCHILD",
+          "PQ_12B_AGEOTHERCH","PQ_12C_ADOPTORBIOCH","PQ_13_MOTIVADOPT",
+          "PQ_14A_TALKADOSTORY","PQ_14B_CHENJOYADSTORY","PQ_14C_PENJOYADSTORY")
+names(df5) <- vnam
+```
+#For select subjects
+merge in their data from older versions of the form, using Michelle L's notes.
+```{r}
+# index.5 <- Parent_Q.3$IDENT_SUBID[index.5]
+# index.6 <- Parent_Q.3$IDENT_SUBID[index.6]
+# index.7 <- Parent_Q.3$IDENT_SUBID[index.7]
+# index.13 <- Parent_Q.3$IDENT_SUBID[index.13]
+# index.14 <- Parent_Q.3$IDENT_SUBID[index.14]
+# index.16 <- Parent_Q.3$IDENT_SUBID[index.16]
+# index.17 <- Parent_Q.3$IDENT_SUBID[index.17]
+# index.18 <- Parent_Q.3$IDENT_SUBID[index.18]
+# index.19 <- Parent_Q.3$IDENT_SUBID[index.19]
+# index.22 <- Parent_Q.3$IDENT_SUBID[index.22]
+
+for (i in 1:length(index.5)) { #5
+  df5$PQ_3_AGEORPH[which(df5$IDENT_SUBID == index.5[i])] <- 
+  Parent_Q.3$PQ_3_AGEORPH[Parent_Q.3$IDENT_SUBID == index.5[i]]
+}
+
+for (i in 1:length(index.6)) { #6
+  df5$PQ_3_AGEFOSTER[which(df5$IDENT_SUBID == index.6[i])] <- 
+  Parent_Q.3$PQ_3_AGEFOSTER[Parent_Q.3$IDENT_SUBID == index.6[i]]
+} 
+
+for (i in 1:length(index.7)) { #7
+  df5$PQ_4_AGEADOPT[which(df5$IDENT_SUBID == index.7[i])] <- 
+  Parent_Q.3$PQ_4_AGEADOPT[Parent_Q.3$IDENT_SUBID == index.7[i]]
+} 
+
+for (i in 1:length(index.13)) { #13
+  df5$PQ_8A_BEHCONS[which(df5$IDENT_SUBID == index.13[i])] <- 
+  Parent_Q.3$PQ_8A_BEHCONS[Parent_Q.3$IDENT_SUBID == index.13[i]]
+}
+
+for (i in 1:length(index.14)) { #14
+  df5$PQ_8B_EXPLAN[which(df5$IDENT_SUBID == index.14[i])] <- 
+  Parent_Q.3$PQ_8B_EXPLAN[Parent_Q.3$IDENT_SUBID == index.14[i]]
+}
+
+for (i in 1:length(index.16)) { #16
+  df5$PQ_10A_HEALTHCONS_OVERC[which(df5$IDENT_SUBID == index.16[i])] <- 
+  Parent_Q.3$PQ_10A_HEALTHCONS_OVERC[Parent_Q.3$IDENT_SUBID == index.16[i]]
+}
+
+for (i in 1:length(index.17)) { #17
+  df5$PQ_10B_EXPLAN[which(df5$IDENT_SUBID == index.17[i])] <- 
+  Parent_Q.3$PQ_10B_EXPLAN[Parent_Q.3$IDENT_SUBID == index.17[i]]
+}
+
+for (i in 1:length(index.18)) { #18
+  df5$PQ_11A_BEHACONS_OVER[which(df5$IDENT_SUBID == index.18[i])] <- 
+  Parent_Q.3$PQ_11A_BEHACONS_OVER[Parent_Q.3$IDENT_SUBID == index.18[i]]
+}
+
+for (i in 1:length(index.19)) { #19
+  df5$PQ_11B_EXPLAN[which(df5$IDENT_SUBID == index.19[i])] <- 
+  Parent_Q.3$PQ_11B_EXPLAN[Parent_Q.3$IDENT_SUBID == index.19[i]]
+}
+
+for (i in 1:length(index.22)) { #22
+  df5$PQ_12C_ADOPTORBIOCH[which(df5$IDENT_SUBID == index.22[i])] <- 
+  Parent_Q.3$PQ_12C_ADOPTORBIOCH[Parent_Q.3$IDENT_SUBID == index.22[i]]
+}
+```
+
+
+#recode the following questions, which qualtrics coded incorrectly.
+```{r}
+var.indices <- c(grep("_6A_",names(df5)),
+                 grep("_7A_",names(df5)),
+                 grep("_8A_",names(df5)),
+                 grep("_10A_",names(df5)),
+                 grep("_11A_",names(df5)),
+                 grep("_12A_",names(df5)),
+                 grep("_14A_",names(df5)),
+                 grep("_14B_",names(df5)),
+                 grep("_14C_",names(df5)))
+
+df5[var.indices] <- lapply(df5[var.indices], function(x) as.numeric(sub(2,0,x)))
+```
+#Convert the ages of the friends to months
+```{r}
+df5$PQ_12B_AGEOTHERCH <- gsub("([A-z])", "", df5$PQ_12B_AGEOTHERCH)
+df5$PQ_12B_AGEOTHERCH<- strsplit(as.character(df5$PQ_12B_AGEOTHERCH), ",")
+
+
+#convert to numeric, multiply by 12 to convert to months
+for (ii in 1:length(df5$PQ_12B_AGEOTHERCH)){
+  df5$PQ_12B_AGEOTHERCH[[ii]]<- as.numeric(df5$PQ_12B_AGEOTHERCH[[ii]])
+  df5$PQ_12B_AGEOTHERCH[[ii]]<- df5$PQ_12B_AGEOTHERCH[[ii]]*12
+  df5$PQ_12B_AGEOTHERCH[[ii]]<- paste(df5$PQ_12B_AGEOTHERCH[[ii]], collapse=",")} 
+#unlist 
+df5$PQ_12B_AGEOTHERCH <- unlist(df5$PQ_12B_AGEOTHERCH)
+```
+According to Michelle L's notes, make one further correction required:
+```{r}
+df5[df5$IDENT_SUBID == "EL127", "PQ_12B_AGEOTHERCH"] <- "228"
+#Fix on additional error that the above script created
+df5[df5$IDENT_SUBID == "EL139", "PQ_12B_AGEOTHERCH"] <- "120,180"
+```
+#Finally, convert necessary columns to correct numeric data type
+```{r}
+select.vars <- c(5,6,7,8,9,11,13,16,18,20,22,24:ncol(df5))
+df5[select.vars] <- lapply(df5[select.vars],as.numeric)
+```
+
+Done!
+No scoring for this form, write out finalized data
+```{r}
+saveRDS(df5, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/PQ.rds")
+```
+

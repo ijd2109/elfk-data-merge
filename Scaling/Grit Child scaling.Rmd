@@ -1,0 +1,36 @@
+---
+title: "Grit Child Scaling"
+author: "Ian Douglas"
+date: "3/14/2019"
+output: html_document
+---
+#Load the tidied data
+```{r}
+rm(list=ls())
+df <- read_rds("/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Children/R/Grit_Child_tidy.Rds")
+nm <- c("CHILD_GRIT_DATE_COMPLETE_C","IDENT_SUBID","CHILD_GRIT_1r",
+        "CHILD_GRIT_2","CHILD_GRIT_3r","CHILD_GRIT_4",
+        "CHILD_GRIT_5r", "CHILD_GRIT_6r","CHILD_GRIT_7","CHILD_GRIT_8")
+names(df) <- nm
+```
+
+#Compute the mean
+```{r}
+df1 <- df %>% group_by(IDENT_SUBID) %>%
+  mutate(GRIT_CHILD_MEAN_W1 = mean(c(
+    CHILD_GRIT_1r, CHILD_GRIT_2, CHILD_GRIT_3r, CHILD_GRIT_4,
+    CHILD_GRIT_5r,CHILD_GRIT_6r, CHILD_GRIT_7, CHILD_GRIT_8),
+    na.rm=T)
+    )
+```
+
+#Write out finalized, scaled data.
+```{r}
+write_rds(df1,"/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/Grit_Child.rds")
+#Convert to character before writing out .csv and .sav
+library(haven)
+df2<-as.data.frame(lapply(df1,as.character),stringsAsFactors=F)
+write.csv(df2, "/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/03 Scored/csv/Grit_Child_final.csv", row.names = FALSE)
+write_sav(df2, "/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/03 Scored/SPSS/Grit_Child_final.sav")
+```
+

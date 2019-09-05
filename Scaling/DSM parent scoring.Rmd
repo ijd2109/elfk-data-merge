@@ -1,0 +1,35 @@
+---
+title: "DSM parent report tidying"
+author: "Ian Douglas"
+date: "5/31/2019"
+output: html_document
+---
+#load in raw data
+```{r}
+rm(list=ls())
+df <- readRDS("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/DSM_P_tidy.rds")
+```
+#Code subscale variables
+```{r}
+df$DSM_SOMATIC_P <- ifelse((df$DSM_1_P >= 2) | (df$DSM_2_P >= 2), 1, 0)
+df$DSM_SLEEP_P <- ifelse(df$DSM_3_P >= 2, 1, 0)
+df$DSM_INATTEN_P <- ifelse(df$DSM_4_P >= 2, 1, 0)
+df$DSM_DEPRESS_P <- ifelse((df$DSM_5_P >= 2) | (df$DSM_6_P >= 2), 1, 0)
+df$DSM_ANGR_IRRIT_P <- ifelse((df$DSM_7_P >= 2) | (df$DSM_8_P >= 2), 1, 0)
+df$DSM_MANIA_P <- ifelse((df$DSM_9_P >= 2) | (df$DSM_10_P >= 2), 1, 0)
+df$DSM_ANX_P <- ifelse((df$DSM_11_P >= 2) | (df$DSM_12_P >= 2) | (df$DSM_13_P >= 2), 1, 0)
+df$DSM_PSYCHOSIS_P <- ifelse((df$DSM_14_P >= 2) | (df$DSM_15_P >= 2), 1, 0)
+df$DSM_REPET_THGHT_P <- ifelse((df$DSM_16_P >= 2) | (df$DSM_17_P >= 2) |
+                                 (df$DSM_18_P >= 2) | (df$DSM_19_P >= 2), 1, 0)
+df$DSM_SUBSTUSE_P <- ifelse((df$DSM_20_P == 1) | (df$DSM_21_P == 1) |
+                              (df$DSM_22_P == 1) | (df$DSM_23_P == 1), 1, 0)
+```
+
+
+#Done!
+Write out finalized data.
+```{r}
+saveRDS(df, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/DSM_P scored.rds")
+```
+
+

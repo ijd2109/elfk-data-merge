@@ -1,0 +1,49 @@
+---
+title: "STAI state scoring"
+author: "Ian Douglas"
+date: "5/29/2019"
+output: html_document
+---
+#read in tidy data
+```{r}
+rm(list=ls())
+suppressPackageStartupMessages(library(tidyverse))
+df<- readRDS("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/STAI_state_tidy.rds")
+```
+
+reverse code select variables
+```{r}
+reverse.var <- function(x) {5-x} #range 1 to 4 for all variables
+
+df1 <- df %>% 
+  group_by(IDENT_SUBID) %>%
+  mutate(PARENT_STAI_STATE_1R = reverse.var(PARENT_STAI_STATE_1),
+         PARENT_STAI_STATE_2R = reverse.var(PARENT_STAI_STATE_2),
+         PARENT_STAI_STATE_5R = reverse.var(PARENT_STAI_STATE_5),
+         PARENT_STAI_STATE_8R = reverse.var(PARENT_STAI_STATE_8),
+         PARENT_STAI_STATE_11R= reverse.var(PARENT_STAI_STATE_11),
+         PARENT_STAI_STATE_15R= reverse.var(PARENT_STAI_STATE_15),
+         PARENT_STAI_STATE_16R= reverse.var(PARENT_STAI_STATE_16),
+         PARENT_STAI_STATE_19R= reverse.var(PARENT_STAI_STATE_19),
+         PARENT_STAI_STATE_20R= reverse.var(PARENT_STAI_STATE_20))
+        
+```
+
+Code the subscale variables
+```{r}
+df2 <- df1 %>%
+  mutate(PARENT_STAI_STATE_ANX_SUM = mean(
+    c(PARENT_STAI_STATE_1R, PARENT_STAI_STATE_2R, PARENT_STAI_STATE_3,
+      PARENT_STAI_STATE_4,  PARENT_STAI_STATE_5R,  PARENT_STAI_STATE_6,
+      PARENT_STAI_STATE_7, PARENT_STAI_STATE_8R, PARENT_STAI_STATE_9,
+      PARENT_STAI_STATE_10, PARENT_STAI_STATE_11R, PARENT_STAI_STATE_12,
+      PARENT_STAI_STATE_13, PARENT_STAI_STATE_14, PARENT_STAI_STATE_15R,
+      PARENT_STAI_STATE_16R, PARENT_STAI_STATE_17, PARENT_STAI_STATE_18,
+      PARENT_STAI_STATE_19R, PARENT_STAI_STATE_20R), 
+    na.rm = TRUE)*20) %>%
+  ungroup()
+```
+Write out the scored STAI-TRAIT data
+```{r}
+saveRDS(df2, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/STAI_state_scored.rds")
+```

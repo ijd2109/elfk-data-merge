@@ -1,0 +1,36 @@
+---
+title: "IF scoring"
+author: "Ian Douglas"
+date: "4/15/2019"
+output: html_document
+---
+#Load in tidy IF data 
+```{r}
+(library(tidyverse))
+rm(list=ls())
+df <- readRDS("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/IF_tidy.rds")
+```
+#reverse code question 4
+```{r}
+df1 <- mutate_at(df, grep("IF_4",names(df)), function(x) 11 - x)
+#rename the variable
+names(df1) <- c(names(df1)[1:5],"IF_4R",names(df1)[7:ncol(df1)])
+```
+#Compute sum score
+```{r}
+df2 <- df1 %>% group_by(IDENT_SUBID) %>% 
+  mutate("IF_SUM" = sum(IF_1, IF_2, IF_3, IF_4R, IF_5, IF_6,
+                        na.rm = TRUE)) %>% ungroup()
+```
+#Done!
+#Write out scored data
+```{r}
+#R file is ready as is.
+write_rds(df2,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/IF_final.rds")
+#csv and sav files need to be converted to all characters
+(library(haven))
+df3 <- df2 %>% mutate_at(1:ncol(df2), function(x) as.character(x))
+write_csv(df3, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/csv/IF_final.csv")
+write_sav(df3, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/SPSS/IF_final.sav")
+```
+

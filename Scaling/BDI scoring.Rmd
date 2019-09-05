@@ -1,0 +1,87 @@
+---
+title: "BDI scoring"
+author: "Ian Douglas"
+date: "6/3/2019"
+output: html_document
+---
+#load in tidy data
+```{r}
+rm(list=ls())
+suppressPackageStartupMessages(library(tidyverse))
+df<-readRDS("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/bdi_tidy.rds")
+```
+#Create sum scores, sperately w.r.t. BDI-1A and BDI-2
+###BDI-1A
+####Exclude questions 9, 11 and 22, pertaining to weight gain and prolonged sleep, respectively.
+```{r}
+df1 <- df %>%
+  group_by(IDENT_SUBID) %>%
+  mutate(PARENT_BDI1A_SUM = mean(c(PARENT_BDI1A_1,PARENT_BDI1A_2,PARENT_BDI1A_3,
+                                   PARENT_BDI1A_4,PARENT_BDI1A_5,PARENT_BDI1A_6,
+                                   PARENT_BDI1A_7,PARENT_BDI1A_8,PARENT_BDI1A_10,
+                                   PARENT_BDI1A_12,PARENT_BDI1A_13,PARENT_BDI1A_14,
+                                   PARENT_BDI1A_15,PARENT_BDI1A_16,PARENT_BDI1A_17,
+                                   PARENT_BDI1A_18,PARENT_BDI1A_19,PARENT_BDI1A_20,
+                                   PARENT_BDI1A_21), na.rm = TRUE)*19)
+```
+###BDI-2
+####Question 9 is already excluded from the raw items
+```{r}
+df2 <- df1 %>%
+  #group_by(IDENT_SUBID) %>%
+  mutate(PARENT_BDI2_SUM = mean(c(
+    PARENT_BDI2_1,PARENT_BDI2_2,PARENT_BDI2_3,PARENT_BDI2_4,PARENT_BDI2_5,
+    PARENT_BDI2_6,PARENT_BDI2_7,PARENT_BDI2_8,PARENT_BDI2_10,PARENT_BDI2_11,
+    PARENT_BDI2_12,PARENT_BDI2_13,PARENT_BDI2_14,PARENT_BDI2_15,PARENT_BDI2_16,
+    PARENT_BDI2_17,PARENT_BDI2_18,PARENT_BDI2_19,PARENT_BDI2_20,PARENT_BDI2_21), 
+    na.rm = TRUE)*20) %>%
+  ungroup()
+```
+#compute a mean score for each as well.
+```{r}
+df3 <- df2 %>%
+  group_by(IDENT_SUBID) %>%
+  mutate(PARENT_BDI1A_MEAN = mean(c(PARENT_BDI1A_1,PARENT_BDI1A_2,PARENT_BDI1A_3,
+                                   PARENT_BDI1A_4,PARENT_BDI1A_5,PARENT_BDI1A_6,
+                                   PARENT_BDI1A_7,PARENT_BDI1A_8,PARENT_BDI1A_10,
+                                   PARENT_BDI1A_12,PARENT_BDI1A_13,PARENT_BDI1A_14,
+                                   PARENT_BDI1A_15,PARENT_BDI1A_16,PARENT_BDI1A_17,
+                                   PARENT_BDI1A_18,PARENT_BDI1A_19,PARENT_BDI1A_20,
+                                   PARENT_BDI1A_21), na.rm = TRUE)) %>%
+  mutate(PARENT_BDI2_MEAN = mean(c(
+    PARENT_BDI2_1,PARENT_BDI2_2,PARENT_BDI2_3,PARENT_BDI2_4,PARENT_BDI2_5,
+    PARENT_BDI2_6,PARENT_BDI2_7,PARENT_BDI2_8,PARENT_BDI2_10,PARENT_BDI2_11,
+    PARENT_BDI2_12,PARENT_BDI2_13,PARENT_BDI2_14,PARENT_BDI2_15,PARENT_BDI2_16,
+    PARENT_BDI2_17,PARENT_BDI2_18,PARENT_BDI2_19,PARENT_BDI2_20,PARENT_BDI2_21), 
+    na.rm = TRUE))
+```
+
+#Now compute a z-score for each participant's mean
+```{r}
+mean.bdi1a <- mean(df3$PARENT_BDI1A_MEAN, na.rm = TRUE)
+sd.bdi1a <- sd(df3$PARENT_BDI1A_MEAN, na.rm = TRUE)
+mean.bdi2 <- mean(df3$PARENT_BDI2_MEAN, na.rm = TRUE)
+sd.bdi2 <- sd(df3$PARENT_BDI2_MEAN, na.rm = TRUE)
+df4 <- df3 %>% group_by(IDENT_SUBID) %>%
+  mutate(PARENT_BDI_Z = ifelse(
+    is.na(PARENT_BDI2_MEAN),
+    ((PARENT_BDI1A_MEAN - mean.bdi1a)/sd.bdi1a),
+    ((PARENT_BDI2_MEAN - mean.bdi2)/sd.bdi2))
+    ) %>%
+  ungroup()
+```
+#Finally, replace NaN with NA to enhance accessibility with other software
+```{r}
+df5 <- df4 %>%
+  mutate_at(c(grep("_MEAN",names(df4)),grep("_SUM",names(df4))),
+            function(x) replace(x, is.nan(x), NA)) %>%
+  mutate_at(c(grep("_MEAN",names(df4)),grep("_SUM",names(df4))),
+            function(x) as.numeric(as.character(x)))
+```
+
+#Done!
+Write out finalized data.
+```{r}
+saveRDS(df5,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/bdi_final.rds")
+```
+

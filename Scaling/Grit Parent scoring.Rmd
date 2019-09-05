@@ -1,0 +1,35 @@
+---
+title: "Grit Parent scoring"
+author: "Ian Douglas"
+date: "3/29/2019"
+output: html_document
+---
+#read in the tidy datafile
+```{r}
+rm(list=ls())
+df <- read_rds("/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/Grit_Parent_tidy.Rds")
+#fix names
+nm<-c("PARENT_GRIT_DATE_COMPLETE","IDENT_SUBID","PARENT_GRIT_1",
+      "PARENT_GRIT_2r","PARENT_GRIT_3r","PARENT_GRIT_4",
+      "PARENT_GRIT_5r","PARENT_GRIT_6","PARENT_GRIT_7r",
+      "PARENT_GRIT_8r","PARENT_GRIT_9","PARENT_GRIT_10",
+      "PARENT_GRIT_11r","PARENT_GRIT_12")
+names(df) <- nm
+```
+#Compute the mean
+
+```{r}
+#SINCE THERE ARE NO na's, compute the mean arithmetically, without calling var.names
+df$GRIT_PARENT_MEAN_W1 <- round(rowSums(df[,-1:-2])/ncol(df[,-1:-2]),
+                                 digits=3)
+```
+#Write out the scored/finalized data.
+```{r}
+write_rds(df,"/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/Grit_Parent.rds")
+#Convert to character before writing out .csv and .sav
+library(haven)
+df1<-as.data.frame(lapply(df,as.character),stringsAsFactors=F)
+write.csv(df1, "/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/03 Scored/csv/Grit_Parent_final.csv", row.names = FALSE)
+write_sav(df1, "/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/03 Scored/SPSS/Grit_Parent_final.sav")
+```
+

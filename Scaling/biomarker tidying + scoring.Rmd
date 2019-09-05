@@ -1,0 +1,104 @@
+---
+title: "biomarker tidying + scoring"
+author: "Ian Douglas"
+date: "6/24/2019"
+output: html_document
+---
+```{r}
+rm(list=ls())
+```
+#read in data
+```{r}
+df <- readxl::read_xlsx("/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/biomarker_results.xlsx", col_names = TRUE)
+```
+#The first two, and last two columns are entirely NA, so delete them
+```{r}
+df1 <- df[-c(1:2,(ncol(df)-1):ncol(df))]
+#convert data to numeric, so that words become NA
+df1[c(9,11,13)] <- lapply(df1[c(9,11,13)],as.numeric)
+#convert dates to character to merge them without re-encoding
+df2 <- df1 %>%
+  mutate_at(c(12,14),function(x) sub(" UTC", "",as.character(x)))
+```
+
+##create a shell data frame to fill in desired values
+```{r}
+d_wide <- data.frame(
+  "IDENT_SUBID" = unique(df2$`Subject ID`),
+  "CORT_INLAB1" = NA,"CORT_INLAB1_DATE" = NA_character_,
+  "CORT_INLAB2" = NA,"CORT_INLAB2_DATE" = NA_character_,
+  "CORT_PREMRI" = NA,"CORT_PREMRI_DATE" = NA_character_,
+  "CORT_POSTMRI" = NA,"CORT_POSTMRI_DATE" = NA_character_,
+  "TESTOS_VALUE" = NA, "TESTOS_TEST_DATE" = NA_character_,
+  "TESTOS_SALIVA_TIMEPOINT" = NA_character_,
+  "CRP_VALUE" = NA, "CRP_TEST_DATE" = NA_character_,
+  "CRP_SALIVA_TIMEPOINT" = NA_character_,
+  stringsAsFactors = FALSE)
+
+#pull in the info conditional on values of "sample_type"
+for (i in seq_along(d_wide$IDENT_SUBID)) {
+  who <- d_wide$IDENT_SUBID[i]
+  T1key <- which(df2$`Subject ID` == who & df2$`Time Point` ==1)
+  if (length(T1key) > 0) {
+    d_wide[i,c("CORT_INLAB1","CORT_INLAB1_DATE",
+               "TESTOS_VALUE","TESTOS_TEST_DATE",
+               "CRP_VALUE","CRP_TEST_DATE")
+               ] <-
+      df2[T1key,c("ug/dL","Date of Testing",
+                  "pg/mL","Date of Testing__1",
+                  "pg/mL2","Date of Testing 3")]
+    d_wide[i,c("TESTOS_SALIVA_TIMEPOINT","CRP_SALIVA_TIMEPOINT")] <- "INLAB1"
+  }
+  T2key <- which(df2$`Subject ID` == who & df2$`Time Point` ==2)
+  if (length(T2key) > 0) {
+    d_wide[i,c("CORT_INLAB2","CORT_INLAB2_DATE",
+               "TESTOS_VALUE","TESTOS_TEST_DATE",
+               "CRP_VALUE","CRP_TEST_DATE")
+               ] <-
+      df2[T2key,c("ug/dL","Date of Testing",
+                  "pg/mL","Date of Testing__1",
+                  "pg/mL2","Date of Testing 3")]
+    d_wide[i,c("TESTOS_SALIVA_TIMEPOINT","CRP_SALIVA_TIMEPOINT")] <- "INLAB2"
+  }
+  T3key <- which(df2$`Subject ID` == who & df2$`Time Point` ==3)
+  if (length(T3key) > 0) {
+    d_wide[i,c("CORT_PREMRI","CORT_PREMRI_DATE",
+               "TESTOS_VALUE","TESTOS_TEST_DATE",
+               "CRP_VALUE","CRP_TEST_DATE")
+               ] <-
+      df2[T3key,c("ug/dL","Date of Testing",
+                  "pg/mL","Date of Testing__1",
+                  "pg/mL2","Date of Testing 3")]
+    d_wide[i,c("TESTOS_SALIVA_TIMEPOINT","CRP_SALIVA_TIMEPOINT")] <- "PREMRI"
+  }
+  T4key <- which(df2$`Subject ID` == who & df2$`Time Point` ==4)
+  if (length(T4key) > 0) {
+    d_wide[i,c("CORT_POSTMRI","CORT_POSTMRI_DATE",
+               "TESTOS_VALUE","TESTOS_TEST_DATE",
+               "CRP_VALUE","CRP_TEST_DATE")
+               ] <-
+      df2[T4key,c("ug/dL","Date of Testing",
+                  "pg/mL","Date of Testing__1",
+                  "pg/mL2","Date of Testing 3")]
+    d_wide[i,c("TESTOS_SALIVA_TIMEPOINT","CRP_SALIVA_TIMEPOINT")] <- "POSTMRI"
+  }
+}
+#convert dates back to Date format
+d_wide2 <- d_wide %>% 
+  mutate_at(c(11,14), 
+            function(x)  as.Date(x,format="%Y-%m-%d"))
+#Convert the CORT dates as well, which were encoded differently when the data was read in.
+d_wide3 <- d_wide2 %>% 
+  mutate_at(c(3,5,7,9),
+            function(x) as.Date(as.numeric(x), origin="1899-12-30"))
+#lastly, if there was no Testosterone or CRP recorded, make the corresponding "saliva_timepoint" also equal to NA
+d_wide3$TESTOS_VALUE <- replace(
+  d_wide3$TESTOS_SALIVA_TIMEPOINT, is.na(d_wide3$TESTOS_VALUE),NA)
+d_wide3$CRP_VALUE <- replace(
+  d_wide3$CRP_SALIVA_TIMEPOINT, is.na(d_wide3$CRP_VALUE),NA)
+```
+#Save RDS
+```{r}
+saveRDS(d_wide3,"/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/cort_testos_crp_wide_biomarker.rds")
+```
+

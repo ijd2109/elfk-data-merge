@@ -1,0 +1,104 @@
+---
+title: "SCARED scaling"
+author: "Ian Douglas"
+date: "3/12/2019"
+output: html_document
+---
+###Data exported from qualtrics 3/11/2019
+#Load tidied data
+```{r}
+rm(list=ls()) #remove all objects in the environment
+df <- read_rds("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/SCARED_tidy.Rds")
+```   
+
+#Create the subscale variables
+```{r}
+###FOR ALL MEANS, include argument na.rm = TRUE
+#SCARED_ANXDIS_MEAN
+df1 <- df
+df2 <- df1 %>% group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_ANXDIS_MEAN = mean(c(SCARED_1, SCARED_2, SCARED_3, SCARED_4, 
+                                SCARED_5, SCARED_6, SCARED_7 , SCARED_8, 
+                                SCARED_9, SCARED_10, SCARED_11, SCARED_12, 
+                                SCARED_13, SCARED_14, SCARED_15, SCARED_16, 
+                                SCARED_17, SCARED_18, SCARED_19, SCARED_20, 
+                                SCARED_21, SCARED_22, SCARED_23, SCARED_24, 
+                                SCARED_25, SCARED_26, SCARED_27, SCARED_28, 
+                                SCARED_29, SCARED_30, SCARED_31, SCARED_32, 
+                                SCARED_33, SCARED_34, SCARED_35, SCARED_36, 
+                                SCARED_37, SCARED_38, SCARED_39, SCARED_40, 
+                                SCARED_41), na.rm=TRUE)*41)
+#SCARED_ANXDIS_SUM
+df3 <- df2 %>% group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_ANXDIS_SUM = SCARED_ANXDIS_MEAN*41)
+
+#SCARED_GAD
+df4 <- df3 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_GAD = mean(c(SCARED_5, SCARED_7, SCARED_14, SCARED_21, 
+                             SCARED_23,SCARED_28, SCARED_33, SCARED_35, 
+                             SCARED_37), na.rm=TRUE)*9)
+#SCARED_PANIC
+df5 <- df4 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_PANIC = mean(c(SCARED_1, SCARED_6, SCARED_9, SCARED_12,
+                               SCARED_15, SCARED_18, SCARED_19, SCARED_22, 
+                               SCARED_24, SCARED_27, SCARED_30, SCARED_34, 
+                               SCARED_38), na.rm=TRUE)*13)
+#SCARED_SOCANX
+df6 <- df5 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_SOCANX = mean(c(SCARED_3, SCARED_10, SCARED_26, SCARED_32, 
+                                SCARED_39, SCARED_40, SCARED_41), na.rm=TRUE)*7)
+#SCARED_SEPANX
+df7 <- df6 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_SEPANX = mean(c(SCARED_4, SCARED_8, SCARED_13, SCARED_16,
+                                SCARED_20, SCARED_25, SCARED_29, SCARED_31),
+                                           na.rm=TRUE)*8)
+#SCARED_SCHOANX
+df8 <- df7 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_SCHOANX = mean(c(SCARED_2, SCARED_11, SCARED_17, SCARED_36),
+                                            na.rm=TRUE)*4)
+#SCARED_ANXYN
+df9 <- df8 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_ANXYN = ifelse(SCARED_ANXDIS_MEAN <= 24, 0, 1))
+
+#SCARED_GADYN
+df10 <- df9 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_GADYN = ifelse(SCARED_GAD <= 8, 0, 1))
+
+#SCARED_PANICYN
+df11 <- df10 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_PANICYN = ifelse(SCARED_PANIC <= 6, 0, 1))
+
+#SCARED_SOCANXYN
+df12 <- df11 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_SOCANXYN = ifelse(SCARED_SOCANX <= 7, 0, 1))
+
+#SCARED_SEPANXYN
+df13 <- df12 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_SEPANXYN = ifelse(SCARED_SEPANX <= 4, 0, 1))
+
+#SCARED_SCHANXYN
+df14 <- df13 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_SCHOANXYN = ifelse(SCARED_SCHOANX <= 2, 0, 1))
+
+#SCARED_SUMANYANXDIS (do not remove variables on which it is based)
+df15 <- df14 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_SUMANYANXDIS = sum(SCARED_GADYN, SCARED_PANICYN, 
+                                   SCARED_SOCANXYN, SCARED_SEPANXYN, 
+                                   SCARED_SCHOANXYN, na.rm = TRUE))
+
+#Recode SCARED_SUMANYANXDIS into SCARED_ANYANXYN
+df16 <- df15 %>%  group_by(IDENT_SUBID) %>% 
+  mutate(SCARED_ANYANXYN = ifelse(SCARED_SUMANYANXDIS <= 0, 0, 1))
+```
+
+
+#Done!
+##Write out csv and sav files
+```{r}
+write_rds(df16,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/SCARED.rds")
+#Convert to character before writing out .csv and .sav
+library(haven)
+df17<-as.data.frame(lapply(df16,as.character),stringsAsFactors=F)
+write.csv(df17, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/csv/SCARED_final.csv", row.names = FALSE)
+write_sav(df17, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/SPSS/SCARED_final.sav")
+```

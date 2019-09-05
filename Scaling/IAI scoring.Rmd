@@ -1,0 +1,138 @@
+---
+title: "IAI scoring"
+author: "Ian Douglas"
+date: "3/29/2019"
+output: html_document
+---
+#load in tidy data
+```{r}
+rm(list=ls())
+df <- read_rds("/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/PI/R/IAI_tidy.Rds")
+```
+
+#Score the composite variables
+```{r}
+df1 <- group_by(df,IDENT_SUBID) %>% mutate(Orph_facility_rating= 
+                                             sum(IAI_5B_QUALBUILD,
+                                                 IAI_5C_CLEANFAC,
+                                                 IAI_2_CITYSIZE,
+                                                 na.rm=F))
+df1$IAI_5D_QUANTCAREG <- ifelse(df1$IAI_5D_QUANTCAREG < 8,
+                                ifelse(df1$IAI_5D_QUANTCAREG > 4, 1, 0), 2)
+#rename the column according to the data entry guidelines
+names(df1) <- c(names(df1)[1:grep("IAI_5D_QUANTCAREG",names(df1))-1],
+                "orph_quantcareg_recode",
+                names(df1)[(grep("IAI_5D_QUANTCAREG",names(df1))+1):ncol(df1)])
+#Create, `Orph_qualcareg_recode` in the same fashion
+df1$IAI_5E_QUALCAREG <- ifelse(df1$IAI_5E_QUALCAREG < 8,
+                                ifelse(df1$IAI_5E_QUALCAREG > 4, 1, 0), 2)
+names(df1) <- c(names(df1)[1:grep("IAI_5E_QUALCAREG",names(df1))-1],
+                "Orph_qualcareg_recode",
+                names(df1)[(grep("IAI_5E_QUALCAREG",names(df1))+1):ncol(df1)])
+#Compute new variable `Orph_SocioEmot_Support`
+df2 <- group_by(df1,IDENT_SUBID) %>%
+  mutate(Orph_SocioEmot_Support = sum(IAI_6A_SPECBOND,
+                                      orph_quantcareg_recode,
+                                      Orph_qualcareg_recode,
+                                      na.rm=F))
+#Recode IAI_8_HEALTHADOPT in the same fashion as above
+df2$IAI_8_HEALTHADOPT <- ifelse(df1$IAI_8_HEALTHADOPT < 8,
+                                ifelse(df1$IAI_8_HEALTHADOPT > 4, 1, 0), 2)
+names(df2) <- c(names(df2)[1:grep("IAI_8_HEALTHADOPT",names(df2))-1],
+                "orph_healthadopt_recode",
+                names(df2)[(grep("IAI_8_HEALTHADOPT",names(df2))+1):ncol(df2)])
+```
+#read in a column from the PQ in order to compute one more variable
+```{r}
+pq <- readRDS("/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/PQ.rds")
+```
+
+#Create the variable and add it to the IAI dataframe
+```{r}
+#Create vector pulling data from PQ_6A_GROCHART in the order of IAI dataframe
+PQ_6A_GROCHART <- NULL
+for (i in 1:nrow(df2)) {
+  PQ_6A_GROCHART[i] <- 
+    ifelse(any(df2$IDENT_SUBID[i] == pq$IDENT_SUBID),
+           pq$PQ_6A_GROCHART[which(df2$IDENT_SUBID[i] == pq$IDENT_SUBID)],
+           NA) 
+}
+df2$PQ_6A_GROCHART <- PQ_6A_GROCHART
+```
+
+```{r}
+#Compute new variable `Orph_healthMet`
+#Note df2 is still grouped by subject ID as desired
+df3 <- df2 %>% mutate(Orph_healthMet = sum(orph_healthadopt_recode,
+                                           IAI_9A_HEALTHCONDADOPT,
+                                           PQ_6A_GROCHART,
+                                           na.rm = F)) %>% ungroup()
+
+```
+#Merge in PACCT participants
+```{r}
+#read in pacct dataset
+dataset<-readxl::read_xlsx(
+  "/Volumes/danl/PACCT/Data_Entry/wave1_data/PACCT_PARENTINT/CGH_all.xlsx",
+  sheet=1)
+#Key for participants with IDENT_SUBIDs in both studies:
+# PA051_V1 = EL144
+# PA052_V1 = EL145
+# PA058_V1 = EL146
+# PA059_V1 = EL147
+# PA061_V1 = EL148
+# PA109_V1 = EL149
+#extract rows containing these participants only
+psubs<-c("PA051_V1","PA052_V1","PA058_V1","PA059_V1","PA061_V1","PA109_V1")
+pa <- data.frame()
+for (i in 1:length(psubs)) {
+  row <- dataset[grep(psubs[i],dataset$IDENT_SUBID),]
+  pa <- rbind(pa,row)
+}
+
+#select desired fields based on overlapping questions of other forms
+pa1 <- pa %>% select(IDENT_SUBID,CGH_7,CGH_8,CGH_8A_EXPLAIN,CGH_8A_EXPLAIN,CGH_13,
+                     CGH_13,CGH_17,CGH_17A_EXPLAIN)
+#recode the subject IDs to assign participants their corresponding ELFK subject ID
+pa2 <- pa1 %>% mutate(IDENT_SUBID = recode(IDENT_SUBID, 
+                                          PA051_V1 = "EL144",
+                                          PA052_V1 = "EL145",
+                                          PA058_V1 = "EL146",
+                                          PA059_V1 = "EL147",
+                                          PA061_V1 = "EL148",
+                                          PA109_V1 = "EL149"))
+#create a shell dataframe and fill pacct participants into it
+pa3<-as.data.frame(matrix(rep(NA, length.out=ncol(df3)*nrow(pa2)),ncol=ncol(df3)))
+names(pa3) <- names(df3)
+#fill in the variables pacct participants have
+pa3$IDENT_SUBID <- pa2$IDENT_SUBID
+pa3$IAI_12_MONTHADJUST <- pa2$CGH_7
+pa3$IAI_13_CHALLADOPTINT <- pa2$CGH_8A_EXPLAIN
+pa3$IAI_16_REWADOPT <- pa2$CGH_13
+pa3$IAI_17_AREACHILDEXCEL <- pa2$CGH_17A_EXPLAIN
+```
+#merging created duplicaes, so now retain only the data that was missing
+```{r}
+#Now attach the two dataframes
+subs<- c("EL144","EL145","EL146","EL147","EL149")
+for (i in seq_along(subs)) {
+  df3[df3$IDENT_SUBID == subs[i], c("IAI_16_REWADOPT","IAI_17_AREACHILDEXCEL")] <-
+    pa3[pa3$IDENT_SUBID == subs[i], c("IAI_16_REWADOPT","IAI_17_AREACHILDEXCEL")]
+}
+subs2 <- c("EL145","EL146","EL147","EL149")
+for (i in seq_along(subs)) {
+  df3[df3$IDENT_SUBID == subs[i], c("IAI_13_CHALLADOPTINT")] <-
+    pa3[pa3$IDENT_SUBID == subs[i], c("IAI_13_CHALLADOPTINT")]
+}
+#Lastly, EL148 did not create a duplicate, so just merge that in
+df4 <- rbind(df3, filter(pa3, IDENT_SUBID == "EL148"))
+```
+
+Done!
+Write out finalized data.
+```{r}
+write_rds(df4,"/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/IAI.rds")
+write.csv(df4, "/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/IAI.csv")
+```
+
+

@@ -1,0 +1,27 @@
+---
+title: "RADS scoring"
+author: "Ian Douglas"
+date: "5/15/2019"
+output: html_document
+---
+#load in tidy data
+```{r}
+rm(list=ls())
+suppressPackageStartupMessages(library(tidyverse))
+df<-readRDS("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/PI/R/RADS_tidy.rds")
+```
+#Compute the sum score over variables 1 to 17
+```{r}
+df1 <- df %>%
+  group_by(IDENT_SUBID) %>%
+  mutate(RAD_1_17_SUM = sum(RADS1,RADS2,RADS3,RADS4,RADS5,RADS6,
+                             RADS7,RADS8,RADS9,RADS10,RADS11,RADS12,RADS13,
+                             RADS14,RADS15,RADS16,RADS17,
+                             na.rm=TRUE)) %>% ungroup()
+```
+Done!
+Write out scored rds data
+```{r}
+saveRDS(df1,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/RADS_scored.rds")
+```
+

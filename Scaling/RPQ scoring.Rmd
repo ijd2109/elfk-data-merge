@@ -1,0 +1,25 @@
+---
+title: "RPQ scoring"
+author: "Ian Douglas"
+date: "5/15/2019"
+output: html_document
+---
+#read in tidy data
+```{r}
+rm(list=ls())
+suppressPackageStartupMessages(library(tidyverse))
+df<-readRDS("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/PI/R/RPQ_tidy.rds")
+```
+#compute the sum score for variables 1 to 9
+```{r}
+df1 <- df %>%
+  group_by(IDENT_SUBID) %>%
+  mutate(RPQ_sum = sum(RPQ1,RPQ2,RPQ3,RPQ4,RPQ5,RPQ6,RPQ7,RPQ8,RPQ9,
+                       na.rm=TRUE)) %>% ungroup()
+```
+Done!
+Write out scored rds data
+```{r}
+saveRDS(df1,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/RPQ_scored.rds")
+```
+

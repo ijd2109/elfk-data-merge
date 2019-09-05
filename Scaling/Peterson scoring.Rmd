@@ -1,0 +1,193 @@
+---
+title: "Peterson scoring"
+author: "Ian Douglas"
+date: "5/13/2019"
+output: html_document
+---
+#read in the tidy data
+```{r}
+rm(list=ls()) #if needed
+fc1 <- readRDS("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Children/R/ppds_fc3_tidy.rds")
+mc1 <- readRDS("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Children/R/ppds_mc3_tidy.rds")
+fp1 <- readRDS("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/ppds_fp3_tidy.rds")
+mp1 <- readRDS("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/ppds_mp3_tidy.rds")
+```
+#recode some scores for very young children
+```{r}
+#read in the demographics to check ages
+demos <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/ELFK_Demo_11_14_2018.csv", stringsAsFactors = F)
+ages <- demos[c("Subject.ID", "Age")]
+ages[,2] <- lapply(ages[2], as.numeric)
+#attach the ages to compare
+for (i in 1:nrow(fc1)) {
+  fc1$age[i] <- ages$Age[which(ages$Subject.ID == fc1$IDENT_SUBID[i])]
+}
+for (i in 1:nrow(fp1)) {
+  fp1$age[i] <- ages$Age[which(ages$Subject.ID == fp1$IDENT_SUBID[i])]
+}
+for (i in 1:nrow(mc1)) {
+  mc1$age[i] <- ages$Age[which(ages$Subject.ID == mc1$IDENT_SUBID[i])]
+}
+for (i in 1:nrow(mp1)) {
+  mp1$age[i] <- ages$Age[which(ages$Subject.ID == mp1$IDENT_SUBID[i])]
+}
+#ignore the warnings
+```
+
+
+#check for NAs in questions about puberty for the younger kids
+```{r}
+
+# where.na(fp2[fp2$age < 10,])
+# PPDS_F_DATE_COMPLETE_P            IDENT_SUBID             PPDS_F_1_P 
+#                      0                      0                      0 
+#             PPDS_F_2_P             PPDS_F_3_P             PPDS_F_4_P 
+#                      0                      0                      0 
+#             PPDS_F_5_P     PPDS_F_6_MENSTRU_P  PPDS_F_7_MENSTRUAGE_P 
+#                      1                      0                     24 
+#      PPDS_F_8_HEIGHT_P      PPDS_F_9_WEIGHT_P                    age 
+#                      3                      1                      0  
+
+# where.na(mp1[mp1$age < 10,])
+# PPDS_M_DATE_COMPLETE_P            IDENT_SUBID             PPDS_M_1_P 
+#                      2                      2                      2 
+#             PPDS_M_2_P             PPDS_M_3_P             PPDS_M_4_P 
+#                      2                      2                      2 
+#             PPDS_M_5_P             PPDS_M_6_P      PPDS_M_8_WEIGHT_P 
+#                      2                      2                      3 
+#      PPDS_M_7_HEIGHT_P                    age 
+#                      3                      2 
+
+#Note, 2 NAs were created in the above search due to age being NA for two participants
+```
+No substitutions necessary in the male data frame.
+As per data entry manual, enter the one female participant's data
+```{r}
+fp1$PPDS_F_5_P[which(is.na(fp1$PPDS_F_5_P))] <- 5
+```
+#change the order so IDENT_SUBID is first, and drop Age now that we are done with it
+```{r}
+fp2 <- fp1[c(2,1,3:11)]
+fc2 <- fc1[c(2,1,3:11)]
+mp2 <- mp1[c(2,1,3:10)]
+mc2 <- mc1[c(2,1,3:10)]
+```
+#compute the mean variables
+```{r}
+fp3 <- fp2 %>% group_by(IDENT_SUBID) %>%
+  mutate(PPDS_F_STAGE_P = 
+           mean(c(PPDS_F_1_P,PPDS_F_2_P,
+                  PPDS_F_3_P,PPDS_F_4_P,
+                  PPDS_F_6_MENSTRU_P),
+                na.rm = TRUE)) %>% ungroup()
+fc3 <- fc2 %>% group_by(IDENT_SUBID) %>%
+  mutate(PPDS_F_STAGE_C = 
+           mean(c(PPDS_F_1_C,PPDS_F_2_C,
+                  PPDS_F_3_C,PPDS_F_4_C,
+                  PPDS_F_6_MENSTRU_C),
+                na.rm = TRUE)) %>% ungroup()
+mc3 <- mc2 %>% group_by(IDENT_SUBID) %>%
+  mutate(PPDS_M_STAGE_C = 
+           mean(c(PPDS_M_1_C,PPDS_M_2_C,
+                  PPDS_M_3_C,PPDS_M_4_C,
+                  PPDS_M_5_C),
+                na.rm = TRUE)) %>% ungroup()
+mp3 <- mp2 %>% group_by(IDENT_SUBID) %>%
+  mutate(PPDS_M_STAGE_P = 
+           mean(c(PPDS_M_1_P,PPDS_M_2_P,
+                  PPDS_M_3_P,PPDS_M_4_P,
+                  PPDS_M_5_P),
+                na.rm = TRUE)) %>% ungroup()
+```
+
+
+#MERGE IN PACCT participants
+```{r}
+pdf <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/PACCT/pacct.csv", stringsAsFactors=F)
+```
+#partition the pacct subjects into m/f
+```{r}
+pdf.m <- pdf[c(grep("IDENT_SUBID", names(pdf),ignore.case = TRUE),
+               grep("ppds_m", names(pdf),ignore.case = TRUE))]
+pdf.f <- pdf[c(grep("IDENT_SUBID", names(pdf),ignore.case = TRUE),
+               grep("ppds_f", names(pdf),ignore.case = TRUE))]
+#delete the rows that contain all NAs, indicating they were the other gender
+pdf.m2 <- pdf.m[-which(apply(pdf.m,1,function(x) sum(is.na(x))) ==9),]
+pdf.f2 <- pdf.f[which(apply(pdf.f,1,function(x) sum(is.na(x))) == 1),]
+```
+#insert a null column for the dates that are missing
+```{r}
+pdf.m3 <- data.frame(pdf.m2[1],matrix(rep(NA,times = nrow(pdf.m2)),ncol=1),
+                     pdf.m2[2:ncol(pdf.m2)])
+pdf.f3 <- data.frame(pdf.f2[1],matrix(rep(NA,times = nrow(pdf.f2)),ncol=1),
+                     pdf.f2[2:ncol(pdf.f2)])
+```
+
+#merge them into the above data
+```{r}
+#this as already done so skip
+#convert the subject ID names
+# pdf.m3$IDENT_SUBID <- gsub(pattern = "PA051", x = pdf.m3$IDENT_SUBID,
+#                            replacement = "EL144") 
+# pdf.m3$IDENT_SUBID <- gsub(pattern = "PA052", x = pdf.m3$IDENT_SUBID,
+#                            replacement = "EL145")
+# pdf.m3$IDENT_SUBID <- gsub(pattern = "PA061", x = pdf.m3$IDENT_SUBID,
+#                            replacement = "EL148")
+# pdf.m3$IDENT_SUBID <- gsub(pattern = "PA109", x = pdf.m3$IDENT_SUBID,
+#                            replacement = "EL149")
+```
+#make sure the names match up before merging
+```{r}
+names(pdf.m3) <- names(mp3) #these were parent report
+names(pdf.f3) <- names(fp3) #these were parent report
+```
+#merge them!
+```{r}
+ppds_f_p <- rbind(fp3, pdf.f3)
+ppds_m_p <- rbind(mp3, pdf.m3)
+ppds_f_c <- fc3 #just rename
+ppds_m_c <- mc3 #just rename
+```
+#LASTLY
+##Merging actually created duplicates for some participants of both ELFK & PAACT
+###Based on the height, retain the one which was completed first (when the child was younger/shorter) for each
+```{r}
+#index the undesired entry, for each
+
+#149
+wrong.height <- max(
+  ppds_f_p$PPDS_F_8_HEIGHT_P[ppds_f_p$IDENT_SUBID == "EL149"]
+  )
+to.delete <- which(
+  ppds_f_p$IDENT_SUBID == "EL149" & ppds_f_p$PPDS_F_8_HEIGHT_P == wrong.height
+  )
+ppds_f_p.final <- ppds_f_p[-to.delete,]
+
+#144
+wrong.height2 <- max(
+  ppds_m_p$PPDS_M_7_HEIGHT_P[which(ppds_m_p$IDENT_SUBID == "EL144")]
+  )
+to.delete2 <- which(
+  ppds_m_p$IDENT_SUBID == "EL144" & ppds_m_p$PPDS_M_7_HEIGHT_P == wrong.height2
+  )
+
+#145
+wrong.height3 <- max(
+  ppds_m_p$PPDS_M_7_HEIGHT_P[which(ppds_m_p$IDENT_SUBID == "EL145")]
+)
+to.delete3 <- which(
+  ppds_m_p$IDENT_SUBID == "EL145" & ppds_m_p$PPDS_M_7_HEIGHT_P == wrong.height3
+  )
+ppds_m_p.final <- ppds_m_p[-c(to.delete2,to.delete3),]
+```
+
+Write out the finalized data!
+```{r}
+saveRDS(ppds_f_c,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/PPDS_fem_child.rds")
+saveRDS(ppds_m_c,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/PPDS_mal_child.rds")
+saveRDS(ppds_f_p.final,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/PPDS_fem_parent.rds")
+saveRDS(ppds_m_p.final,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/PPDS_mal_parent.rds")
+```
+
+
+
