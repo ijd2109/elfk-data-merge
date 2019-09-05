@@ -1,0 +1,79 @@
+---
+title: "PARENT_GRIT"
+author: "Ian Douglas"
+date: "2/25/2019"
+output: html_document
+---
+
+PARENT_GRIT data processing
+Produced by Ian Douglas
+
+###Load data
+```{r}
+df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Raw/QUALTRICS/Qualtrics_Raw_Adult_Grit_Questionnaire.csv")
+```
+
+#Extract relevant information
+```{r}
+#View(df)
+# Select variables of interest (supplant user-entered date with "RecordedDate")
+df1 <- df %>% select(RecordedDate,starts_with("Q"),-Q18) 
+#remove rows with fake data and qualtrics artifacts
+df1 <- df1[10:nrow(df1),]
+```
+#Standardize subject ID numbers
+```{r}
+###After discussion with Tricia participant id "el06lp" should be changed to EL061
+#Change variable from factor to character
+df1$Q17 <- as.character(df1$Q17)
+df1$Q17[which(df1$Q17=="el06lp")] <- "EL061"
+df2 <- df1 %>%
+  # extract id NUMBERS only
+  mutate(Q17 = as.integer(str_extract(df1$Q17, 
+                                         pattern ="\\(?[0-9,.]+\\)?")))%>%
+  # add prefix "EL00", "EL0", or "EL" as necessary; rename:
+  mutate(IDENT_SUBID = paste0(ifelse(nchar(Q17)==1,"EL00",
+                                ifelse(nchar(Q17)==2,"EL0",
+                                       "EL")), Q17)) %>%
+  # remove old Q17 and return to desired order
+  select(RecordedDate,IDENT_SUBID, everything(), -Q17)
+```
+#Rename variables
+```{r}
+var_names <- cbind("GRIT_DATE_COMPLETE_P", "IDENT_SUBID","GRIT_1_P", "GRIT_2_P",
+                   "GRIT_3_P", "GRIT_4_P", "GRIT_5_P", "GRIT_6_P", "GRIT_7_P",
+                   "GRIT_8_P", "GRIT_9_P", "GRIT_10_P", "GRIT_11_P", "GRIT_12_P")
+names(df2) <- var_names
+```
+
+#Convert factors to numeric
+```{r}
+df3 <- df2
+#Numeric Grit questionnaire responses begin with column 3, continue to the end of df
+for (i in 3:ncol(df3)) {
+  df3[i] <- as.numeric(as.character(df3[,i]))
+}
+```
+
+#Reverse code select variables
+```{r}
+#Create new variables (with reverse codes)
+df4 <- df3 %>% mutate(GRIT_1_Pr = 6 - GRIT_1_P, GRIT_4_Pr = 6 - GRIT_4_P, 
+                      GRIT_6_Pr = 6 - GRIT_6_P, GRIT_9_Pr = 6 - GRIT_9_P, 
+                      GRIT_10_Pr = 6 - GRIT_10_P, GRIT_12_Pr = 6 - GRIT_12_P) %>%
+  #return to original order, exclude old version of recoded questions
+  select("GRIT_DATE_COMPLETE_P", "IDENT_SUBID","GRIT_1_Pr", "GRIT_2_P",
+                   "GRIT_3_P", "GRIT_4_Pr", "GRIT_5_P", "GRIT_6_Pr", "GRIT_7_P",
+                   "GRIT_8_P", "GRIT_9_Pr", "GRIT_10_Pr", "GRIT_11_P", "GRIT_12_Pr") %>% 
+  #compute new variable for the mean
+  mutate(GRIT_PARENT_MEAN_W1 = mean(c(GRIT_1_Pr, GRIT_2_P, GRIT_3_P, GRIT_4_Pr,
+                                     GRIT_5_P, GRIT_6_Pr, GRIT_7_P, GRIT_8_P,
+                                     GRIT_9_Pr, GRIT_10_Pr, GRIT_11_P, GRIT_12_Pr)))
+```
+
+#Write and save .csv and .sav
+```{r}
+write.csv(df5, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Processed/Qualtrics_Cleaned_in_R_Parent_GRIT_Questionnaire.csv", row.names = F)
+#library(haven)
+write_sav(df5, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Processed/Qualtrics_Cleaned_in_R_Parent_GRIT_Questionnaire.sav")
+```

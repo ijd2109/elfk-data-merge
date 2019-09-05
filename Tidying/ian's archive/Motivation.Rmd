@@ -1,0 +1,21 @@
+---
+title: "Motivation"
+author: "Ian Douglas"
+date: "3/6/2019"
+output: html_document
+---
+# Produced by Ian Douglas
+   
+###Extract Data
+```{r}
+df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Raw/QUALTRICS/Qualtrics_Raw_Motivation_Questionnaire.csv")
+```  
+   
+   
+```{r}
+#View data
+View(df)
+##Looks like real data starts with row 4: exract relevant rows and columns.
+df1 <- df[4:nrow(df),] %>% select(RecordedDate,starts_with("Q"))
+```
+

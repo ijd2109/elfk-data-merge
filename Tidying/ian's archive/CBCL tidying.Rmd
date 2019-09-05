@@ -1,0 +1,100 @@
+---
+title: "CBCL tidying"
+author: "Ian Douglas"
+date: "4/3/2019"
+output: html_document
+---
+#Script for processing the Qualtrics CBCL data
+```{r}
+rm(list=ls())
+df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Parent/CBCL raw.csv", stringsAsFactors = FALSE)
+```
+#View the first rows of the ID column
+```{r}
+df$Q3[1:20]
+```
+#Looks that mock/test data ends at line 8
+#Extract desired data
+```{r}
+#supplant the user-entered date with the timestamp
+df1 <- df[9:nrow(df),] %>% select(RecordedDate, starts_with("Q"),-Q5)
+```
+#Check if any missing data, NA, or if non-numeric subject IDs (or zero's) remain
+```{r}
+where.na(df1)[2]
+quantity.missing(df1)[2]
+test<-mutate(df1, 
+             Q3 = as.integer(str_extract(df1$Q3,pattern ="\\(?[0-9,.]+\\)?"))) %>%
+  select(Q3)
+which(is.na(test)==TRUE)
+which(test==0)
+```
+#Conclusion: rows 39, 40, and 111 may present problems:
+```{r}
+df1$Q3[c(39,40,111)]
+```
+#Indeed, there were more mock data, so delete those as well
+```{r}
+df2 <- df1[-c(39,40,111),]
+```
+#Now search for duplicates in the subject ID column
+```{r}
+digits<-mutate(df2, 
+             Q3 = as.integer(str_extract(df2$Q3,pattern ="\\(?[0-9,.]+\\)?"))) %>%
+  select(Q3)
+#then define "dup"
+dup <- which(duplicated(digits$Q3))
+
+#create a side-by-side comparison (2-column matrix with the duplicates)
+duplicates <- matrix(cbind(rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup))), 
+                     ncol=5)
+#now fill it with your values that were duplicated
+for (i in 1:length(dup)) {
+  duplicates[i,] <- c(rep(NA_character_, times=ncol(duplicates)-length(which(digits$Q3==digits$Q3[dup[i]]))),
+                      df2$Q3[which(digits$Q3==digits$Q3[dup[i]])])
+}
+colnames(duplicates) <- c(rep("Raw entry",times=5))
+#duplicates
+#Repeat this process with raw dates and raw times.
+#create the matrix to capture the date output as well.
+dates <- matrix(cbind(rep(NA_character_,times=length(dup)),
+                      rep(NA_character_,times=length(dup)),
+                      rep(NA_character_,times=length(dup)),
+                      rep(NA_character_,times=length(dup)),
+                      rep(NA_character_,times=length(dup))), 
+                ncol=5)
+for (i in 1:length(dup)) {
+  dates[i,] <- c(rep(NA_character_, times=ncol(duplicates)-length(which(digits$Q3==digits$Q3[dup[i]]))),
+                 as.character(df2$RecordedDate[which(digits$Q3==digits$Q3[dup[i]])]))
+}
+
+#combine the matrices and order the columns to see associated info side by side.
+
+search <- cbind(as.data.frame(duplicates),
+                as.data.frame(dates))[,c(4,9,5,10)]
+names(search) <- c("raw entry #1", "timestamp1","raw entry #2","timestamp2")
+search
+```
+#"EL061" typo'd their subject ID, correct this for them as follows:
+```{r}
+df2[grep("el06lp",df2$Q3), which(names(df2)=="Q3")] <- "EL061"
+```
+#Retain the earlier observation of subject "EL142"
+```{r}
+df3 <- df2[-which(df2$Q3 == "EL142" & df2$RecordedDate == "2018-06-20 09:41:48"),]
+```
+#Now we are ready to standardize the subject IDs
+```{r}
+df4 <- ELFK.identsubid(df3,"Q3")
+```
+#Format the timestamp into data-type Date
+```{r}
+df5 <- df4 %>% 
+  mutate_at(1, function(x) strtrim(x,10)) %>%
+  mutate_at(1, function(x) as.Date(x, format = "%Y-%m-%d"))
+```
+

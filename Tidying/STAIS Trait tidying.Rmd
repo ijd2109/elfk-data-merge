@@ -1,0 +1,87 @@
+---
+title: "STAIS Trait tidying"
+author: "Ian Douglas"
+date: "5/29/2019"
+output: html_document
+---
+#load raw data, extracted 5/29/19
+```{r}
+rm(list=ls())
+suppressPackageStartupMessages(library(tidyverse))
+df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Parent/STAIS trait.csv", stringsAsFactors = FALSE)
+```
+
+#Check for mock/test data
+```{r}
+head(df$Q1)
+tail(df$Q1)
+#remove the first two rows
+```
+Extract desired data
+```{r}
+df1 <- df[-1:-2,] %>% dplyr::select(RecordedDate, starts_with("Q"))
+```
+#search for duplicates
+```{r}
+View(id.search(df1, "Q1", "RecordedDate"))
+```
+#Fix one typo
+EL061 entered "el06lp", causing a conflict with EL006
+```{r}
+df1$Q1 <- replace(df1$Q1, df1$Q1 == "el06lp", "EL061")
+```
+
+For other entries, delete the entry specified below:
+```{r}
+deletion.matrix <- matrix(c(
+  "el070", "2016-12-28 13:02:53", #based on age entered, second (other) entry is correct
+"EL079P", "2016-10-16 10:55:52", #this entry comes long after the first (correct), delete
+"EL071P", "2017-02-24 13:58:37", #this entry comes long after the first (correct), delete
+"EL097", "2017-05-31 12:27:07", #this entry erroneously entered a day after the first
+"EL127P", "2018-01-05 13:49:29", #this was the wrong parent of child EL127
+"el140", "2018-04-10 13:40:37" #this too after the first (correct), so delete
+), ncol = 2, byrow = TRUE)
+
+deletion.indices <- NULL
+for (i in 1:nrow(deletion.matrix)) {
+  deletion.indices[i] <- which(
+    df1$Q1 == deletion.matrix[i,1] & df1$RecordedDate == deletion.matrix[i,2]
+  )
+}
+deletion.indices
+df2 <- df1[-deletion.indices,]
+```
+#format the subject ID and date columns; deselect the user-entered date
+```{r}
+df3 <- ELFK.identsubid(df2, "Q1") %>% 
+  format.date("RecordedDate") %>% 
+  select(-Q2_1)
+```
+#attach the proper variable names
+```{r}
+vnam <- NULL
+for (i in 1:20) {
+  vnam[i]<- paste0("PARENT_STAI_TRAIT_",i)
+}
+names(df3) <- c("PARENT_STAI_TRAIT_DATE","IDENT_SUBID", 
+                "PARENT_STAI_TRAIT_AGE","PARENT_STAI_TRAIT_SEX",
+                vnam)
+```
+#ensure numeric data are in correct form
+```{r}
+# > get.variable.classes(df3)
+# classes
+# character      Date 
+#        23         1 
+#convert numeric variables to appropriate format
+df4 <- df3 %>%
+  mutate_at(grep("[0-9]$", names(.)), as.numeric)
+```
+Done!
+Write out tidy data
+```{r}
+saveRDS(df4, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/STAI_trait_tidy.rds")
+```
+
+
+

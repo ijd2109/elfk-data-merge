@@ -1,0 +1,687 @@
+---
+title: "Peterson Child M+F tidying"
+author: "Ian Douglas"
+date: "3/18/2019"
+output: html_document
+---
+#load in the data for each gender
+```{r}
+#rm(list=ls())
+#male form version:
+df.m <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Parent/Peterson parent male raw.csv", stringsAsFactors=F)
+#female form version:
+df.f <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Parent/Peterson parent female raw.csv", stringsAsFactors=F)
+#df.f.COMPARE <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Parent/Peterson parent female raw.csv", stringsAsFactors=F)
+suppressPackageStartupMessages(library(tidyverse))
+```
+#View the subject ID column
+###to scan for mock/test data in each
+```{r}
+cbind(head(df.f$Q1_1, 15),head(df.m$Q1_1, 15))
+```
+-Real data actually begins right after the headers, so extract relevant data
+```{r}
+#also subtract the user-entered date column when selecting columns
+df.m1 <- df.m[-c(1:2),] %>% select(RecordedDate, starts_with("Q"), -Q1_2)
+df.f1 <- df.f[-c(1:2),] %>% select(RecordedDate, starts_with("Q"), -Q1_2)
+#after discussion with Tricia, merge data for duplicate entry of EL016 and delete the unwanted entry
+df.f1[25,c("Q10_1","Q10_2")] <- df.f1[24,c("Q10_1","Q10_2")]
+df.f1 <- df.f1[-24,]
+```
+
+#reformat the date column
+-The timestamps need to be analyzed to determine which entries belong to children and which correctly were entered by parents.
+```{r}
+#Create new df with the subject id, and timestamp, across both genders
+df.time <- rbind(df.f1[1:2], df.m1[1:2])
+#add an indicator of gender
+df.time$gender <- c(
+  rep("F", times = nrow(df.f1)),rep("M", times = nrow(df.m1)))
+#remove test/mock data that contained no numbers in subject ID field
+df.time <- df.time[-all.letters(df.time$Q1_1)]
+#indicate if a subject id contains p for parent
+df.time$p.or.c <- ifelse(grepl("p", df.time$Q1_1,ignore.case=T), "parent", "")
+
+```
+#also:
+some kids filled out the correct version of the form, so flag their parents correctly
+```{r}
+c.df.f <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Children/Peterson Female raw.csv", stringsAsFactors=F)
+c.df.m <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Children/Peterson Male raw.csv", stringsAsFactors=F)
+c.df.f1 <- c.df.f[10:nrow(c.df.f),] %>% select(RecordedDate, starts_with("Q"), -"Q1_2")
+c.df.m1 <- c.df.m[7:nrow(c.df.m),] %>% select(RecordedDate, starts_with("Q"), -"Q1_2")
+c.df.f3 <- ELFK.identsubid(c.df.f1,"Q1_1")
+c.df.m3 <- ELFK.identsubid(c.df.m1,"Q1_1")
+View(c.df.f3);View(c.df.m3)
+#this will become useful when subject IDs are standardized
+```
+
+#continue analyzing parent form and the partitioned dataframes that resulted
+```{r}
+#split the dates and the times into seperate variables
+df.time$time <- substr(df.time$RecordedDate, 12,19)
+df.time$date <- as.Date(
+  substr(df.time$RecordedDate, 1,10), format = "%Y-%m-%d")
+
+names(df.time) <- c("Timestamp","id","gender","parent.or.child","time","date")
+#select columns in the desired order
+df.time <- df.time[c(2,3,5,6,1,4)]
+df.time$id.generated <- ELFK.identsubid(df.time,"id")[,1]
+```
+
+#read in a child-only form (Motivation items) and parent-only (SCARED)
+```{r}
+#read in the higgins motivation items to compare the time and date for child
+mot.c.df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Children/Motivation raw.csv", stringsAsFactors=F)
+#do the same with the SCARED for the parents, who will have completed the form just before completing the PPDS
+sca.p.df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Parent/SCARED raw.csv", stringsAsFactors=F)
+#extract desired columns for comparison, and create variables from timestamp, and generated id.
+mot.c.df <- mot.c.df[4:nrow(mot.c.df),] %>% select(RecordedDate, Q1)
+sca.p.df <- sca.p.df[9:nrow(sca.p.df),] %>% select(RecordedDate, Q3)
+```
+
+```{r}
+mot.c.df$time <- substr(mot.c.df$RecordedDate, 12,19)
+mot.c.df$date <- as.Date(
+  substr(mot.c.df$RecordedDate, 1,10), format = "%Y-%m-%d")
+sca.p.df$time <- substr(sca.p.df$RecordedDate, 12,19)
+sca.p.df$date <- as.Date(
+  substr(sca.p.df$RecordedDate, 1,10), format = "%Y-%m-%d")
+mot.c.df$id.generated <- ELFK.identsubid(mot.c.df,"Q1")[,2]
+sca.p.df$id.generated <- ELFK.identsubid(sca.p.df,"Q3")[,2]
+mot.c.df$duplicate <- duplicated(mot.c.df$id.generated)
+sca.p.df$duplicate <- duplicated(sca.p.df$id.generated)
+#remove one duplicate from the kid dataframe as per the tidying script for that form
+mot.c.df <- mot.c.df[-which(mot.c.df$Q1=="EL025" & mot.c.df$RecordedDate == "2015-12-06 11:39:49"),]
+mot.c.df$id.generated <- ELFK.identsubid(mot.c.df,"Q1")[,2]
+mot.c.df$duplicate <- duplicated(mot.c.df$id.generated)
+```
+
+#clean up df.time id column so raw entries correspond to correct id.generated
+```{r}
+df.time[grep("06l", df.time$id),1] <- "eL061p"
+
+#re-run id.generation and duplicate flag
+df.time$id.generated <- ELFK.identsubid(df.time,"id")[,1]
+df.time$duplicated <- duplicated(df.time$id.generated)
+df.time <- df.time[-which(df.time$id.generated == "NANA"),]
+
+#add 10 rows of just all NA
+na.matrix <- matrix(rep(NA, times = 16*nrow(df.time)),ncol=16)
+df.time2 <- cbind(df.time,na.matrix)
+```
+
+#match up timestamps from any matching IDs from the child-only MOTIVATION, and parent-only SCARED
+```{r}
+df.time3 <- df.time2
+for (i in 1:nrow(df.time3)) {
+  who <- df.time3$id.generated[i]
+  which.kids <- which(mot.c.df$id.generated == who)
+  num.kids <- length(which.kids)
+  kid.times <- mot.c.df$RecordedDate[which.kids]
+  which.adults <- which(sca.p.df$id.generated == who)
+  num.adults <- length(which.adults)
+  adult.times <- sca.p.df$RecordedDate[which.adults]
+  if (num.kids != 0) {
+    for (j in 1:num.kids) {
+      df.time3[i,j+8] <- kid.times[j]
+  }
+  
+  }
+  if (num.adults != 0) {
+    for (j in 1:num.adults) {
+      df.time3[i,j + 16] <- adult.times[j]
+    }
+  }
+}
+df.time3 <- df.time3[-c(10:16,19:24)] #delete the unfiled columns
+names(df.time3) <- c(names(df.time3)[1:8],"child.timestamp","parent.timestamp1","parent.timestamp2")
+#merge in confirmed children and parents basedon this breakdown
+df.time3$parent.or.child <- replace(df.time3$parent.or.child, is.na(df.time3$parent.timestamp1) &
+                                      is.na(df.time3$parent.timestamp2) &
+                                      (is.na(df.time3$child.timestamp)==F), "child")
+df.time3$parent.or.child <- replace(df.time3$parent.or.child, is.na(df.time3$child.timestamp) &
+                                      (is.na(df.time3$parent.timestamp1) == F |
+                                         is.na(df.time3$parent.timestamp2) == F), "parent")
+
+```
+#filter dataframe by undecided cases
+```{r}
+df.time4 <- df.time3[df.time3$parent.or.child == "",]
+#View(df.time4[c(5,9,10,11)])
+#compare times to determine who is child and who is parent
+```
+
+#after visual search
+```{r}
+df4.p.or.c<-c("parent","","parent","parent",
+  "parent","parent","parent","child", #7
+  "child","child","parent","child", #11
+  "parent","parent","child","", #15
+  "parent","parent","", #18
+  "parent","parent","","",
+  "","parent","child","",
+  "", "","parent","child",
+  "parent","","child","parent",
+  "child","child","child","child",
+  "parent","child","parent","child",
+  "child","child","child","child",
+  "parent","parent","parent","child",
+  "","","","child",
+  "child","parent","parent","child",
+  "","parent","parent","parent",
+  "parent","parent","","parent",
+  "child","parent","parent","parent",
+  "parent","","","parent",
+  "parent","","child","child",
+  "parent","parent","","child",
+  "parent","parent","parent","child",
+  "parent","","","parent",
+  "parent","","parent","child",
+  "","child","","",
+  "","","child","child",
+  "parent","parent","parent","child",
+  "child","child","child","parent",
+  "parent","child","parent","")
+df.time4$parent.or.child <- df4.p.or.c
+#define a new dataframe with the cases still remaining unkown
+df.time5 <- df.time4[df.time4$parent.or.child == "",]
+#after combing through these visually add in new determinations
+df5.p.or.c <- c("","child","parent","child","parent","","","","",
+                "","","parent","parent","","","","child","","","",
+                "","","","","","","","")
+df.time5$parent.or.child <- df5.p.or.c
+```
+#recombine the full dataframes; filtering to avoid creating duplicates
+```{r}
+df.timefull <- rbind(df.time3[df.time3$parent.or.child != "",],df.time4[df.time4$parent.or.child != "",],df.time5)
+```
+#how many cases are left:
+```{r}
+sum(df.timefull$parent.or.child == "")
+#split them up into male and female datasets
+df.timefull.f <- df.timefull[df.timefull$gender == "F",]
+df.timefull.m <- df.timefull[df.timefull$gender == "M",]
+```
+#merge back into the full data to see if other variables provide clues
+```{r}
+#delete rows with non-subject IDs in the subject ID column
+df.f2 <- df.f1[-c(grep("TEST",df.f1$Q1_1), grep("fgs",df.f1$Q1_1)),]
+df.f2$parent.or.child <- rep(NA, times = nrow(df.f2))
+for (i in 1:nrow(df.f2)) {
+  who <- df.f2$Q1_1[i]
+  when <- df.f2$RecordedDate[i]
+  df.f2$parent.or.child[i] <- df.timefull.f[
+    which(df.timefull.f$id == who & df.timefull.f$Timestamp == when),6
+    ]
+}
+#prepare the male dataframe with some minor corrections
+df.m2 <- df.m1
+df.m2$parent.or.child <- rep(NA, times = nrow(df.m2))
+df.m2$Q1_1[grep("el06lp",df.m2$Q1_1)] <- "eL061p"
+for (i in 1:nrow(df.m2)) {
+  who <- df.m2$Q1_1[i]
+  when <- df.m2$RecordedDate[i]
+  df.m2$parent.or.child[i] <- df.timefull.m[
+    which(df.timefull.m$id == who & df.timefull.m$Timestamp == when),6
+    ]
+}
+
+#add a gender variable before merging
+df.f2$gender <- rep("F", times = nrow(df.f2))
+df.m2$gender <- rep("M", times = nrow(df.m2))
+```
+
+#do the sme but also pull the times from other forms
+```{r}
+df.f3 <- df.f2
+df.m3 <- df.m2
+df.f3$child.ts1 <- rep(NA, times = nrow(df.f3))
+df.m3$child.ts1 <- rep(NA, times = nrow(df.m3))
+df.f3$parent.ts1 <- rep(NA, times = nrow(df.f3))
+df.m3$parent.ts1 <- rep(NA, times = nrow(df.m3))
+df.f3$parent.ts2 <- rep(NA, times = nrow(df.f3))
+df.m3$parent.ts2 <- rep(NA, times = nrow(df.m3))
+for (i in 1:nrow(df.m3)) {
+  who <- df.m3$Q1_1[i]
+  when <- df.m3$RecordedDate[i]
+  df.m3$child.ts1[i] <- df.timefull.m[
+    which(df.timefull.m$id == who & df.timefull.m$Timestamp == when),9
+    ]
+  df.m3$parent.ts1[i] <- df.timefull.m[
+    which(df.timefull.m$id == who & df.timefull.m$Timestamp == when),10
+    ]
+  df.m3$parent.ts2[i] <- df.timefull.m[
+    which(df.timefull.m$id == who & df.timefull.m$Timestamp == when),11
+    ]
+}
+for (i in 1:nrow(df.f3)) {
+  who <- df.f3$Q1_1[i]
+  when <- df.f3$RecordedDate[i]
+  df.f3$child.ts1[i] <- df.timefull.f[
+    which(df.timefull.f$id == who & df.timefull.f$Timestamp == when),9
+    ]
+  df.f3$parent.ts1[i] <- df.timefull.f[
+    which(df.timefull.f$id == who & df.timefull.f$Timestamp == when),10
+    ]
+  df.f3$parent.ts2[i] <- df.timefull.f[
+    which(df.timefull.f$id == who & df.timefull.f$Timestamp == when),11
+    ]
+}
+
+```
+
+#if any kids filled out the kids-only PPDS, then the other entry is their parent
+```{r}
+for (i in 1:nrow(c.df.f3)) {
+print(any(c.df.f3$Q1_1[i] %in% df.timefull$id[df.timefull$parent.or.child == ""]))
+}
+#output shows no luck there...
+for (i in 1:nrow(c.df.m3)) {
+print(any(c.df.m3$Q1_1[i] %in% df.timefull$id[df.timefull$parent.or.child == ""]))
+}
+#output shows that EL017 filld out the kid-only form! Label their parents entry
+df.timefull$parent.or.child[grep("EL017",df.timefull$id)] <- "parent"
+```
+#if any children had siblings, then there may be a time lag between the motivation items, and the PPDS
+```{r}
+#check demographic form
+demos <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/ELFK_Demo_11_14_2018.csv", stringsAsFactors = F)
+counts.per.family<-group_by(demos, Family_code) %>% summarise("count" = n())
+counts.per.family$count <- ifelse(counts.per.family$count >2, 
+                                  counts.per.family$count, NA)
+family.tally <- c()
+for (i in 1:nrow(counts.per.family)) {
+  family.tally <- c(family.tally, rep(counts.per.family$count[i], 
+                                      times =
+                                        ifelse(
+                                          is.na(counts.per.family$count[i]),
+                                          2, counts.per.family$count[i])))
+}
+demos$family.tally = family.tally
+#now find the ones who have sibilings
+demos.sibs <- demos[demos$family.tally > 2,]
+#select + retain desired columns
+demos.sibs <- demos.sibs %>% select(Subject.ID,sex,DOB,family.tally, Age)
+```
+#are any of our unknown cases in this siblings group?
+```{r}
+#we want to use "id.generated" since demos are already standardized format
+unk.id.gen <- df.timefull[df.timefull$parent.or.child == "",] %>%
+  select(id.generated,id,gender, Timestamp,child.timestamp,parent.timestamp1,parent.timestamp2)
+search.out <- NULL
+for (i in 1:nrow(unk.id.gen)) {
+search.out[i]<-any(unk.id.gen$id.generated[i] %in% demos.sibs$Subject.ID)
+}
+have.siblings <- unk.id.gen$id.generated[which(search.out)]
+
+```
+#return to the visual search for these participants
+```{r}
+View(subset(df.timefull, df.timefull$id.generated %in% have.siblings))
+results <- data.frame(list(id.gen = c("EL081","EL082"),
+                timestmp = c("2016-12-10 12:13:08", "2016-12-10 12:14:42"),
+                parent.child = c("child","child")))
+#merge these two additional findings into the list
+df.timefull[
+  which(df.timefull$id.generated == results[1,1] & df.timefull$Timestamp == results[1,2]),
+  "parent.or.child"] <- results[1,3]
+df.timefull[which(
+  df.timefull$id.generated == results[2,1] & df.timefull$Timestamp == results[2,2]
+  ),"parent.or.child"] <- results[2,3]
+#In addition, 87 has a sibling [86], and the parent fills out their forms with the ID for that child [86p], so 87 is the child
+df.timefull$parent.or.child[which(df.timefull$id == "087")] <- "child"
+```
+#also determine which kids are younger than 10, if they are, their entry is from a parent
+```{r}
+#convert demos to numeric
+under10 <- demos %>% mutate_at(grep("Age",names(demos)), function(x) as.numeric(x)) %>%
+  filter(Age < 10)
+#see if anyone under 10 is unclassiffied who is under 10
+search.res <- NULL
+for (i in 1:nrow(unk.id.gen)) {
+search.res[i]<-any(unk.id.gen$id.generated[i] %in% under10$Subject.ID)
+}
+View(unk.id.gen[which(search.res),]) #these are all parent entries
+
+id.time <- matrix(cbind(c(unk.id.gen$id[which(search.res)]),
+                        c(unk.id.gen$Timestamp[which(search.res)])),
+                  ncol = 2, byrow = F)
+#Fill them in as parents
+for (i in 1:nrow(id.time)) {
+  df.timefull$parent.or.child[
+    df.timefull$id == id.time[i,1] & df.timefull$Timestamp == id.time[i,2]
+  ] <- "parent"
+}
+
+```
+
+
+#rerun the merge script to combine df.m2 and df.f2 with df.timefull
+```{r}
+#split them up into male and female datasets
+df.timefull.f <- df.timefull[df.timefull$gender == "F",]
+df.timefull.m <- df.timefull[df.timefull$gender == "M",]
+
+df.f2$parent.or.child <- rep(NA, times = nrow(df.f2))
+for (i in 1:nrow(df.f2)) {
+  who <- df.f2$Q1_1[i]
+  when <- df.f2$RecordedDate[i]
+  df.f2$parent.or.child[i] <- df.timefull.f[
+    which(df.timefull.f$id == who & df.timefull.f$Timestamp == when),6
+    ]
+}
+#prepare the male dataframe with some minor corrections
+df.m2$parent.or.child <- rep(NA, times = nrow(df.m2))
+for (i in 1:nrow(df.m2)) {
+  who <- df.m2$Q1_1[i]
+  when <- df.m2$RecordedDate[i]
+  df.m2$parent.or.child[i] <- df.timefull.m[
+    which(df.timefull.m$id == who & df.timefull.m$Timestamp == when),6
+    ]
+}
+#add a gender variable before merging
+df.f2$gender <- rep("F", times = nrow(df.f2))
+df.m2$gender <- rep("M", times = nrow(df.m2))
+
+df.f3 <- df.f2
+df.m3 <- df.m2
+df.f3$child.ts1 <- rep(NA, times = nrow(df.f3))
+df.m3$child.ts1 <- rep(NA, times = nrow(df.m3))
+df.f3$parent.ts1 <- rep(NA, times = nrow(df.f3))
+df.m3$parent.ts1 <- rep(NA, times = nrow(df.m3))
+df.f3$parent.ts2 <- rep(NA, times = nrow(df.f3))
+df.m3$parent.ts2 <- rep(NA, times = nrow(df.m3))
+for (i in 1:nrow(df.m3)) {
+  who <- df.m3$Q1_1[i]
+  when <- df.m3$RecordedDate[i]
+  df.m3$child.ts1[i] <- df.timefull.m[
+    which(df.timefull.m$id == who & df.timefull.m$Timestamp == when),9
+    ]
+  df.m3$parent.ts1[i] <- df.timefull.m[
+    which(df.timefull.m$id == who & df.timefull.m$Timestamp == when),10
+    ]
+  df.m3$parent.ts2[i] <- df.timefull.m[
+    which(df.timefull.m$id == who & df.timefull.m$Timestamp == when),11
+    ]
+}
+for (i in 1:nrow(df.f3)) {
+  who <- df.f3$Q1_1[i]
+  when <- df.f3$RecordedDate[i]
+  df.f3$child.ts1[i] <- df.timefull.f[
+    which(df.timefull.f$id == who & df.timefull.f$Timestamp == when),9
+    ]
+  df.f3$parent.ts1[i] <- df.timefull.f[
+    which(df.timefull.f$id == who & df.timefull.f$Timestamp == when),10
+    ]
+  df.f3$parent.ts2[i] <- df.timefull.f[
+    which(df.timefull.f$id == who & df.timefull.f$Timestamp == when),11
+    ]
+}
+```
+
+```{r}
+#62 and 80 are the child, because the parent's STAI was filled out before the PPDS entry, the parent STAI occurred before the ppds, which is impossible
+#92 is the parent because the forms were filled out all on different days, which is impossible for the child to do.
+#139 the parent started questionnaires after the child, so its more likely to be the child's form, since typically the researcher started the kid first if the two came in on the same day.
+df.timefull$parent.or.child[
+  df.timefull$id == "062" & df.timefull$Timestamp == "2017-01-28 13:37:08"
+  ] <- "child"
+df.timefull$parent.or.child[
+  df.timefull$id == "080" & df.timefull$Timestamp == "2016-10-16 10:54:06"
+  ] <- "child"
+df.timefull$parent.or.child[
+  df.timefull$id == "EL139" & df.timefull$Timestamp == "2018-04-14 13:03:31"
+  ] <- "child"
+df.timefull$parent.or.child[
+  df.timefull$id == "092" & df.timefull$Timestamp == "2017-03-14 10:54:13"
+  ] <- "parent"
+```
+
+#last case cross-referenced with assessment calendar
+```{r}
+
+#ELO71 is the child because the parent's STAI was filled out BEFORE this ppds
+
+df.timefull[which(df.timefull$id == "ELO71"),"parent.or.child"] <- "child"
+```
+##ALL ARE CLASSIFIED
+#merge the parent.or.child list into the full data again, continue tidying
+```{r}
+#split them up into male and female datasets
+df.timefull.f <- df.timefull[df.timefull$gender == "F",]
+df.timefull.m <- df.timefull[df.timefull$gender == "M",]
+#pull the relevant parent.or.child from the `df.timefull` list absed on the id in df.f2 and df.m2 [cross-referencing with the timestamp to ensure matches]
+df.f2$parent.or.child <- rep(NA, times = nrow(df.f2))
+for (i in 1:nrow(df.f2)) {
+  who <- df.f2$Q1_1[i]
+  when <- df.f2$RecordedDate[i]
+  df.f2$parent.or.child[i] <- df.timefull.f[
+    which(df.timefull.f$id == who & df.timefull.f$Timestamp == when),"parent.or.child"
+    ]
+}
+#prepare the male dataframe with some minor corrections
+df.m2$parent.or.child <- rep(NA, times = nrow(df.m2))
+for (i in 1:nrow(df.m2)) {
+  who <- df.m2$Q1_1[i]
+  when <- df.m2$RecordedDate[i]
+  df.m2$parent.or.child[i] <- df.timefull.m[
+    which(df.timefull.m$id == who & df.timefull.m$Timestamp == when),"parent.or.child"
+    ]
+}
+#no need to create df.m3 and df.f3 because we don't need the timestamps from other forms
+```
+
+#Split the two data frames [already divided by gender] into parent and child
+```{r}
+ppds.M_p <- df.m2[df.m2$parent.or.child == "parent",]
+ppds.M_c <- df.m2[df.m2$parent.or.child == "child",]
+ppds.F_p <- df.f2[df.f2$parent.or.child == "parent",]
+ppds.F_c <- df.f2[df.f2$parent.or.child == "child",]
+#for the child data frame, add in the kids who filled out the child-only survey
+#Note we can delete gender and parent/child identifiers now that everything is partitioned correctly
+ppds.M_p <- ppds.M_p[,-c(grep("parent.or.child",
+                              names(ppds.M_p)),
+                         grep("Topics",
+                              names(ppds.M_p)),
+                         grep("gender",names(ppds.M_p)))]
+ppds.M_c <- ppds.M_c[,-c(grep("parent.or.child",
+                              names(ppds.M_c)),
+                         grep("Topics",
+                              names(ppds.M_c)),
+                         grep("gender",names(ppds.M_c)))]
+ppds.F_p <- ppds.F_p[,-c(grep("parent.or.child",
+                              names(ppds.F_p)),
+                         grep("Topics",
+                              names(ppds.F_p)),
+                         grep("gender",names(ppds.F_p)))]
+ppds.F_c <- ppds.F_c[,-c(grep("parent.or.child",
+                              names(ppds.F_c)),
+                         grep("Topics",
+                              names(ppds.F_c)),
+                         grep("gender",names(ppds.F_c)))]
+#merge in the child-only rows
+ppds.M_c <- rbind(ppds.M_c,c.df.m3)
+ppds.F_c <- rbind(ppds.F_c,c.df.f3)
+```
+#Tidy the data as per usual
+```{r}
+#check for duplicates
+View(id.search(ppds.F_c, "Q1_1", "RecordedDate"))
+```
+#results suggest to retain the earlier entry of EL041 and EL005
+```{r}
+#note the retained entry of EL005 is the one filled out on the child form.
+rm <- c(grep("el041", ppds.F_c$Q1_1), grep("el005", ppds.F_c$Q1_1))
+ppds.F_c2 <- ppds.F_c[-rm,]
+```
+
+```{r}
+#none here.
+#id.search(ppds.F_p, "Q1_1", "RecordedDate")
+ppds.F_p2 <- ppds.F_p
+```
+```{r}
+View(id.search(ppds.M_c, "Q1_1", "RecordedDate"))
+```
+
+#results show that there are two entries for EL004
+```{r}
+#retain the etnry that was collected on the correct form (the child version)
+ppds.M_c2 <- ppds.M_c[-which(ppds.M_c$Q1_1 == "el004"),]
+```
+
+```{r}
+View(id.search(ppds.M_p, "Q1_1", "RecordedDate"))
+```
+#it looks like the first entry was filled out with regards to the parent (based on the weight entered)
+```{r}
+ppds.M_p2 <- ppds.M_p[-grep("EL049", ppds.M_p$Q1_1),]
+```
+
+#standardize the unique subject ids
+```{r}
+ppds.M_p3 <- ELFK.identsubid(ppds.M_p2, "Q1_1")
+ppds.F_p3 <- ELFK.identsubid(ppds.F_p2, "Q1_1")
+ppds.M_c3 <- ELFK.identsubid(ppds.M_c2, "Q1_1")
+ppds.F_c3 <- ELFK.identsubid(ppds.F_c2, "Q1_1")
+```
+#format the timestamp
+```{r}
+ppds.M_p4 <- format.date(ppds.M_p3, "RecordedDate")
+ppds.F_p4 <- format.date(ppds.F_p3, "RecordedDate")
+ppds.M_c4 <- format.date(ppds.M_c3, "RecordedDate")
+ppds.F_c4 <- format.date(ppds.F_c3, "RecordedDate")
+```
+#convert numeric variables to the appropriate class
+```{r}
+#in addition delete the user-entered DOB
+ppds.M_p5<-ppds.M_p4 %>% 
+  mutate_at(grep("Q4",names(ppds.M_p4)):grep("Q9",names(ppds.M_p4)),
+            function(x) as.numeric(x)) %>%
+  select(-Q1_3)
+ppds.M_c5<-ppds.M_c4 %>% 
+  mutate_at(grep("Q4",names(ppds.M_c4)):grep("Q9",names(ppds.M_c4)),
+            function(x) as.numeric(x)) %>%
+  select(-Q1_3)
+ppds.F_p5<-ppds.F_p4 %>% 
+  mutate_at(grep("Q4",names(ppds.F_p4)):grep("Q13_2",names(ppds.F_p4)),
+            function(x) as.numeric(x)) %>%
+  select(-Q1_3)
+ppds.F_c5<-ppds.F_c4 %>% 
+  mutate_at(grep("Q4",names(ppds.F_c4)):grep("Q13_2",names(ppds.F_c4)),
+            function(x) as.numeric(x)) %>%
+  select(-Q1_3)
+```
+#rename these dataframes for typing convenience
+```{r}
+#also, remove the user-entered DOB since it will be redundant upon database merging
+mc <- ppds.M_c5
+mp <- ppds.M_p5
+fc <- ppds.F_c5
+fp <- ppds.F_p5
+```
+#compute the height and weight for each column
+```{r}
+#make some corrections to typos in the height
+mc[mc$Q10_1 == "5foot1", 9:10] <- c(5, 1)
+mc$Q10_2 <- replace(mc$Q10_2,mc$Q10_2=="1 1/2",1.5)
+mc[mc$Q10_1 == "5ft", 9:10] <- c(5, 8)
+mc[mc$Q10_1 == "5 feet", 9] <- 5
+mp$Q10_1 <- gsub(pattern = "[\']",x = mp$Q10_1,"")
+mp$Q10_2 <- gsub(pattern = "[\"]",x = mp$Q10_2,"")
+mp[mp$Q10_1 == "3.67",9:10] <- c(3,8)
+mp[mp$Q10_1 == "0", 9:10] <- c(3,9)
+mp[mp$Q10_1 == "44 inches", 9:10] <- c(3,8)
+mp[mp$Q10_1 == "45 inches", 9:10] <- c(3,9)
+fc[fc$Q10_1 == "4 feet", 11:12] <- c(4,11)
+fc[fc$Q10_1 == "4ft", 11:12] <- c(4,11)
+fp$Q10_1 <- gsub(pattern = "[\']",x = fp$Q10_1,"")
+fp$Q10_2 <- gsub(pattern = "[\"]",x = fp$Q10_2,"")
+#and to the weight
+mc$Q11_1<-gsub(pattern = "[A-Za-z]",x = mc$Q11_1,"")
+mp$Q11_1<-gsub(pattern = "[A-Za-z]",x = mp$Q11_1,"")
+fc$Q11_1<-gsub(pattern = "[A-Za-z]",x = fc$Q11_1,"")
+fp$Q11_1<-gsub(pattern = "[A-Za-z]",x = fp$Q11_1,"")
+#convert these columns to numeric
+df.list <- list(mc,mp,fc,fp)
+new.dfs <- list()
+for (i in 1:length(df.list)) {
+  d <- df.list[[i]]
+  new.dfs[[i]] <- mutate_at(d, (ncol(d)-2):ncol(d), function(x) as.numeric(x))
+}
+mc2 <- new.dfs[[1]]
+mp2 <- new.dfs[[2]]
+fc2 <- new.dfs[[3]]
+fp2 <- new.dfs[[4]]
+```
+#recode Q6 on the female form [Qualtrics Q12]
+```{r}
+#if subjects selected "no", qualtrics printed 1, and qualtrics printed "yes"= 2
+#No stays the same, but "yes" should equal 4.
+fc2$Q12 <- replace(fc2$Q12, fc2$Q12 == 2, 4)
+fp2$Q12 <- replace(fp2$Q12, fp2$Q12 == 2, 4)
+```
+
+#apply the names of each column
+```{r}
+m.names.c <- c("PPDS_M_DATE_COMPLETE_C","IDENT_SUBID",
+               "PPDS_M_1_C","PPDS_M_2_C", "PPDS_M_3_C","PPDS_M_4_C",
+               "PPDS_M_5_C","PPDS_M_6_C",
+               "PPDS_M_7_HEIGHT_ft_C","PPDS_M_7_HEIGHT_in_C","PPDS_M_8_WEIGHT_C")
+f.names.c <- c("PPDS_F_DATE_COMPLETE_C","IDENT_SUBID","PPDS_F_1_C","PPDS_F_2_C",
+             "PPDS_F_3_C","PPDS_F_4_C","PPDS_F_5_C",
+             "PPDS_F_6_MENSTRU_C","PPDS_F_7_MENSTRUAGE_yr_C",
+             "PPDS_F_7_MENSTRUAGE_mo_C","PPDS_F_8_HEIGHT_ft_C",
+             "PPDS_F_8_HEIGHT_in_C","PPDS_F_9_WEIGHT_C")
+m.names.p <- c("PPDS_M_DATE_COMPLETE_P","IDENT_SUBID",
+               "PPDS_M_1_P","PPDS_M_2_P", "PPDS_M_3_P","PPDS_M_4_P",
+               "PPDS_M_5_P","PPDS_M_6_P",
+               "PPDS_M_7_HEIGHT_ft_P","PPDS_M_7_HEIGHT_in_P","PPDS_M_8_WEIGHT_P")
+f.names.p <- c("PPDS_F_DATE_COMPLETE_P","IDENT_SUBID","PPDS_F_1_P","PPDS_F_2_P",
+             "PPDS_F_3_P","PPDS_F_4_P","PPDS_F_5_P",
+             "PPDS_F_6_MENSTRU_P","PPDS_F_7_MENSTRUAGE_yr_P",
+             "PPDS_F_7_MENSTRUAGE_mo_P","PPDS_F_8_HEIGHT_ft_P",
+             "PPDS_F_8_HEIGHT_in_P","PPDS_F_9_WEIGHT_P")
+names(mc2) <- m.names.c; names(mp2) <- m.names.p
+names(fc2) <- f.names.c; names(fp2) <- f.names.p
+```
+#combine age and height columns that are in multiple different units
+```{r}
+fc3 <- fc2 %>% 
+  mutate(PPDS_F_7_MENSTRUAGE_C = 
+           (12*PPDS_F_7_MENSTRUAGE_yr_C) + PPDS_F_7_MENSTRUAGE_mo_C,
+         PPDS_F_8_HEIGHT_C = 
+           (PPDS_F_8_HEIGHT_ft_C*12) + PPDS_F_8_HEIGHT_in_C) %>% 
+  select(-PPDS_F_7_MENSTRUAGE_yr_C,-PPDS_F_7_MENSTRUAGE_mo_C,
+               -PPDS_F_8_HEIGHT_ft_C, -PPDS_F_8_HEIGHT_in_C)
+fp3 <- fp2 %>% 
+  mutate(PPDS_F_7_MENSTRUAGE_P = 
+           (12*PPDS_F_7_MENSTRUAGE_yr_P) + PPDS_F_7_MENSTRUAGE_mo_P,
+         PPDS_F_8_HEIGHT_P = 
+           (PPDS_F_8_HEIGHT_ft_P*12) + PPDS_F_8_HEIGHT_in_P) %>% 
+  select(-PPDS_F_7_MENSTRUAGE_yr_P,-PPDS_F_7_MENSTRUAGE_mo_P,
+               -PPDS_F_8_HEIGHT_ft_P,-PPDS_F_8_HEIGHT_in_P)
+mp3 <- mp2 %>% 
+  mutate(PPDS_M_7_HEIGHT_P = 
+           (PPDS_M_7_HEIGHT_ft_P*12) + PPDS_M_7_HEIGHT_in_P) %>% 
+  select(-PPDS_M_7_HEIGHT_ft_P, -PPDS_M_7_HEIGHT_in_P)
+mc3 <- mc2 %>% 
+  mutate(PPDS_M_7_HEIGHT_C = 
+           (PPDS_M_7_HEIGHT_ft_C*12) + PPDS_M_7_HEIGHT_in_C) %>% 
+  select(-PPDS_M_7_HEIGHT_ft_C, -PPDS_M_7_HEIGHT_in_C)
+#return to correct order
+ppds_fp3_tidy <- fp3[c(1:8,10:11,9)]
+ppds_fc3_tidy <- fc3[c(1:8,10:11,9)]
+ppds_mc3_tidy <- mc3[c(1:8,10:9)]
+ppds_mp3_tidy <- mp3[c(1:8,10:9)]
+```
+
+#write out tidy data
+```{r}
+write_rds(ppds_fc3_tidy,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Children/R/ppds_fc3_tidy.rds")
+write_rds(ppds_mc3_tidy,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Children/R/ppds_mc3_tidy.rds")
+write_rds(ppds_mp3_tidy,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/ppds_mp3_tidy.rds")
+write_rds(ppds_fp3_tidy,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/ppds_fp3_tidy.rds")
+```
+

@@ -1,0 +1,104 @@
+---
+title: "Child DSM Cross Cutting tidying"
+author: "Ian Douglas"
+date: "3/14/2019"
+output: html_document
+---
+#Load csv data
+#Data exported from qualtrics on 3/13/19
+```{r}
+rm(list=ls()) #remove all objects in environment
+df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Children/DSM Cross Cutting raw.csv", stringsAsFactors = FALSE)
+```
+
+#Check the subject ID field for mock/test data
+```{r}
+#by location
+head(df$Q1)
+which(df$Q1=="")
+#Conclusion:::No mock/test data entered at the beginning of the form
+#No missing ID numbers
+```
+
+#Extract relevant variables
+###Replace user-entered date with the Qualtrics timestamp
+```{r}
+df1 <- df[3:nrow(df),] %>% select(RecordedDate, starts_with("Q"),-Q4)
+```
+
+#Check for duplicates in the IDs
+```{r}
+test<-mutate(df1, 
+             Q1 = as.integer(str_extract(df1$Q1,pattern ="\\(?[0-9,.]+\\)?"))) %>%
+  select(Q1)
+#then define "dup"
+dup <- which(duplicated(test$Q1))
+dup
+# integer(0)
+#:::Conclusion: no duplicates entered or introduced in processing
+```
+
+#Standardize the IDs to ELFK format
+```{r}
+df2 <- df1 %>%
+  # extract id NUMBERS only
+  mutate(Q1 = as.integer(str_extract(df1$Q1, 
+                                         pattern ="\\(?[0-9,.]+\\)?")))%>%
+  # add prefix "EL00", "EL0", or "EL" as necessary; rename:
+  mutate(IDENT_SUBID = paste0(ifelse(nchar(Q1)==1,"EL00",
+                                ifelse(nchar(Q1)==2,"EL0",
+                                       "EL")), Q1)) %>%
+  select(RecordedDate, IDENT_SUBID, everything(),-Q1)
+```
+
+#Standardize the dates from character to numeric
+####Exclude hours, minutes, and seconds
+```{r}
+df3 <- df2 %>% mutate_at(1, function(x) strtrim(x,10)) %>%
+  mutate_at(1, function(x) as.Date(x, format = "%Y-%m-%d"))
+```
+
+#Put the numeric variables in their appropriate data-type
+```{r}
+df4 <- df3 %>% mutate_at(3:ncol(df3), function(x) as.numeric(x))
+```
+
+#Attach the variable names
+```{r}
+var_names <- NULL
+for (i in 1:23) {
+  var_names[i] <- paste0("KSADS_DSM",i,"_C")
+}
+var.names <- c("KSADS_DSM_DATE_C","IDENT_SUBID",
+               "KSADS_DSM_AGE_C","KSADS_DSM_GENDER_C",var_names)
+names(df4) <- var.names
+```
+
+#For binary variables, recode "No" from 2 to 0
+```{r}
+df5 <- df4 %>% mutate_at(ncol(df4):(ncol(df4)-3), function(x) sub(2,0,x))
+```
+
+#For other numeric variables:
+###Shift the scale from 0 to 3 (from 1 to 4)
+```{r}
+df6 <- df5 %>% mutate_at(5:(ncol(df4)-4), function(x) x-1)
+```
+
+#Fix the variable names
+```{r}
+var.names <- names(df6)
+new.names <-c(
+  sub("KSADS_", "", var.names[1]), 
+  "IDENT_SUBID",  
+  sub("KSADS_", "", var.names[3:4]),
+  sub("KSADS_DSM", "DSM_", var.names[-1:-4])
+  )
+names(df6) <- new.names
+```
+
+Done!
+##Write out tidy .Rds
+```{r}
+write_rds(df6,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Children/R/DSM_C_tidy.rds")
+```

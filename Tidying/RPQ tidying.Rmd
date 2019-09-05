@@ -1,0 +1,70 @@
+---
+title: "RPQ tidying"
+author: "Ian Douglas"
+date: "5/15/2019"
+output: html_document
+---
+#load raw data, extracted 5/15/2019
+```{r}
+rm(list=ls())
+suppressPackageStartupMessages(library(psych))
+suppressPackageStartupMessages(library(tidyverse))
+df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/PI/RPQ raw.csv", stringsAsFactors = FALSE)
+```
+
+View subj ID column to identify fake data
+```{r}
+head(df$Q1) #delete the first three rows
+tail(df$Q1) #last row contains fake data
+```
+#Extract desired info
+```{r}
+df1 <- df[-c(1:2,nrow(df)),] %>% select(RecordedDate, starts_with("Q"))
+```
+#look for duplicates in the subj ID field
+```{r}
+id.search(df1, "Q1", "RecordedDate")
+```
+According to Michelle L's notes, retain only the 1 (of 3) entry of "EL145" that occurred imediately after the entry for the sibling EL144. 
+```{r}
+i <- c(which(df1$Q1 == "EL145" & df1$RecordedDate == "2018-06-12 17:40:26"),
+        which(df1$Q1 == "EL145" & df1$RecordedDate == "2018-06-21 15:27:13"))
+df2 <- df1[-i,]
+```
+#Format the dates
+```{r}
+df3 <- format.date(df2,"RecordedDate")
+```
+#Standardize the subj ID
+```{r}
+df4 <- ELFK.identsubid(df3, "Q1")
+```
+#convert numeric variables to numeric class
+```{r}
+df5 <- df4 %>% 
+  mutate_at(-c(grep("RecordedDate",names(df4)),
+               grep("Q1", names(df4))),
+            function(x) as.numeric(x))
+```
+Cross-checking with qualtrics, qualtrics reverse coded everything, and shifted the range from 1 to 4, as opposed to 0 to 3.
+```{r}
+#require(psych)
+df6 <- data.frame(
+  df5[1:2],
+  reverse.code(keys = rep(-1, times = (ncol(df5)-2)),
+               items = df5[-1:-2]) - 1) #SUBTRACT 1 also
+```
+
+#Attach the variable names
+```{r}
+#attach the variable names
+vnam <- c("RPQ_DATE_COMPLETE","IDENT_SUBID", 
+          "RPQ1", "RPQ2","RPQ3","RPQ4","RPQ5",
+          "RPQ6","RPQ7","RPQ8","RPQ9")
+names(df6) <- vnam
+```
+Done!
+#Save the tidied data
+```{r}
+saveRDS(df6,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/PI/R/RPQ_tidy.rds")
+```

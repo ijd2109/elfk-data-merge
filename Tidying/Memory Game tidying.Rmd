@@ -1,0 +1,93 @@
+---
+title: "Memory game tidying"
+author: "Ian Douglas"
+date: "3/15/2019"
+output: html_document
+---
+###Data exported from qualtrics 3/13/2019
+#load data
+```{r}
+rm(list=ls())
+df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Children/Memory game raw.csv", stringsAsFactors=F)
+```
+#View subject ID field
+```{r}
+head(df$Q1)
+```
+```{r}
+#IT looks like real data starts on line 4
+#Extract desired rows and columns
+df1 <- df[4:nrow(df),] %>% select(RecordedDate, starts_with("Q"))
+```
+#Scan the user-entered subject IDs for duplicates
+```{r}
+test<-mutate(df1, 
+             Q1 = as.integer(str_extract(df1$Q1,pattern ="\\(?[0-9,.]+\\)?"))) %>%
+  select(Q1)
+#Check that the extracted digits are numbers greater than zero, no NAs:
+#How many erroneously entered 0:
+sum(test==0,na.rm=T) #no subject IDs contained only the number zero.
+
+#How many contained no numbers (and became NA through above extraction):
+where.na(test) # results show us one such case.
+
+##SINCE above test for NA is greater than zero, obtain row index and raw data:
+cbind(matrix(as.character(which(is.na(test)==TRUE)),ncol=1), matrix(as.character(df1$Q1[which(is.na(test)==TRUE)]),ncol=1))
+#      [,1] [,2]                           
+# [1,] "3"  "TEST"                         
+# [2,] "4"  "test anon"                    
+# [3,] "24" ""                             
+# [4,] "62" "Bridget Test for I don't know"
+```
+#remove the above cases from the dataframe and repeat search
+```{r}
+
+df1 <- df1[-c(which(is.na(test)==TRUE)),]
+test<-mutate(df1, 
+             Q1 = as.integer(str_extract(df1$Q1,pattern ="\\(?[0-9,.]+\\)?"))) %>%
+  select(Q1)
+#After reproducing list of integer extractions from ID column, proceed:
+
+#define "dup" as the location where these duplicates occur
+dup <- which(duplicated(test$Q1))
+
+#create a side-by-side comparison (2-column matrix with the duplicates)
+duplicates <- matrix(cbind(rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup))), 
+                     ncol=5)
+#now fill it with your values that were duplicated
+for (i in 1:length(dup)) {
+  duplicates[i,] <- c(df1$Q1[which(test$Q1==test$Q1[dup[i]])],rep(NA_character_, times=ncol(duplicates)-length(which(test$Q1==test$Q1[dup[i]]))))
+}
+duplicates
+#      [,1]    [,2]    [,3] [,4] [,5]
+# [1,] "EL037" "EL037" NA   NA   NA  
+#Conclusion: there is are two exact duplicate entries for "EL037" in subject ID field
+```
+#Determine which one is older
+```{r}
+filter(df1,Q1=="EL037") %>% select(Q1,RecordedDate)
+#Conclusion: the first entry should be retained; remove the other
+df2 <- df1[-c(which(df1$Q1=="EL037" & df1$RecordedDate=="2016-03-26 21:31:06")),]
+#dimension check:
+dim(df2)
+#[1] 67 83
+```
+#standardize the subject IDs to ELFK format
+```{r}
+df3 <- ELFK.identsubid(data = df2, id.variable.name = "Q1")
+```
+#reformat the date column
+```{r}
+df4 <- df3 %>% 
+  mutate_at(1, function(x) strtrim(x,10)) %>%
+  mutate_at(1, function(x) as.Date(x, format = "%Y-%m-%d"))
+```
+#reformat numeric data to appropriate data-type
+```{r}
+df5 <- df4 %>% mutate_at(3:ncol(df4), function(x) as.numeric(x))
+```
+

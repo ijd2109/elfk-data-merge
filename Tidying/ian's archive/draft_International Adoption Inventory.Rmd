@@ -1,0 +1,211 @@
+---
+title: "International Adoption Inventory"
+author: "Ian Douglas"
+date: "2/15/2019"
+output: html_document
+---
+###International Adoption Inventory   
+Produced by Ian Douglas   
+```{r}
+# Required packages:
+library(tidyverse)
+# This workflow is designed to process raw .csv output from Qualtrics.
+# Read in the raw data from its location on your computer:
+setwd("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Scripts")
+iai <- read.csv(file = "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Raw/QUALTRICS/Qualtrics_Raw_Adoption_Questionnaire_5.5.2018.csv")
+```
+   
+   View data (optional)
+```{r}
+#Check dimensions
+dim(iai)
+#To open data viewer in RStudio:
+View(iai)
+```
+
+Extract and retain only relevant information
+```{r}
+
+# Note: retain qualtrics-generated date and time; this wiil be needed later when merging with other datasets. (This is called "RecordedDate")
+iai1 <- iai %>% 
+  select(starts_with("Q"), RecordedDate) %>% 
+  slice(-1:-2)
+#Optional: Check you retained the right info: should be n by 31
+dim(iai1)
+# [1] 36 31
+#View(dat1)
+```
+
+Rename variables 
+```{r}
+# Define vector of var names (IF YOU RECODED ID's AND REORDERED AS ABOVE)
+# Note: leave the user-entered subject id's with the qualtrics label "Q1"
+var_names <- c("Q1","IAI_1A_COUNTRYADOPT","IAI_1B_CITYBORN",
+               "IAI_2_CITYSIZE","IAI_3_AGEORPH","IAI_4_HOWORPH",
+               "IAI_5_SEEORPH","IAI_5B_QUALBUILD","IAI_5C_CLEANFAC",
+               "IAI_5D_QUANTCAREG","IAI_5E_QUALCAREG","IAI_6A_SPECBOND",
+               "IAI_6B_EXPLAN","IAI_7_AGEADOPT","IAI_8_HEALTHADOPT",
+               "IAI_9A_HEALTHCONDADOPT","IAI_9B_EXPLAN",
+               "IAI_10A_HEALTHCONDLATER","IAI_10B_EXPLAN",
+               "IAI_11_REACTMEET","IAI_12_MONTHADJUST",
+               "IAI_13_CHALLADOPTINT","IAI_14A_DEVADVANCE",
+               "IAI_14B_EXPLAN","IAI_15A_DEVSTRUG","IAI_15B_EXPLAN",
+               "IAI_16_REWADAOPT","IAI_17_AREACHILDEXCEL",
+               "IAI_18_AREACHILDSTRUG","IAI_19B_EXPLAN",
+               "IAI_DATE_COMPLETE")
+# EITHER:
+# 1. overwrite the old column names:
+names(iai1) <- var_names
+# OR
+# 2. Create a new dataframe with the correct names:
+iai2 <- as.data.frame(iai1, col.names = var_names)
+
+# If your variables were in a different order, change the order of objects inside var_names before overwrite or creating new df
+```
+
+
+Standardize subject ID's
+```{r}
+iai3 <- iai2 %>%
+  # extract id NUMBERS only
+  mutate(Q1 = as.integer(str_extract(iai2$Q1, 
+                                         pattern ="\\(?[0-9,.]+\\)?")))%>%
+  # add prefix "EL00", "EL0", or "EL" as necessary; rename:
+  mutate(IDENT_SUBID = paste0(ifelse(nchar(Q1)==1,"EL00",
+                                ifelse(nchar(Q1)==2,"EL0",
+                                       "EL")), Q1)) %>%
+  # remove old Q1 and return to original order
+  select(IDENT_SUBID, IAI_1A_COUNTRYADOPT:IAI_DATE_COMPLETE)
+#View(iai3)
+```
+
+   Initial data cleaning and recoding:
+
+```{r}
+# Create binary variable to indicate if question 19 was filled with text
+iai3$IAI_19A_OTHERINFO <- ifelse(iai3$IAI_19B_EXPLAN == "" | iai3$IAI_19B_EXPLAN == "not applicable" | str_count(iai3$IAI_19B_EXPLAN, boundary("word")) <= 1,NA,1)
+  #reorder
+iai3 <- select(iai3,IDENT_SUBID:IAI_18_AREACHILDSTRUG,IAI_19A_OTHERINFO,IAI_19B_EXPLAN:IAI_DATE_COMPLETE)
+   
+#recode IAI_3_AGEORPH
+iai4 <- iai3 %>% mutate(IAI_3_AGEORPH =
+                          recode(IAI_3_AGEORPH,
+                                 "2" = 2, "2 weeks" = 1, "don't know" = 9,
+                                 "1 day old" = 0,"days old"  = 0,
+                                 "2 days"  = 0,"~ 3 months" = 2,
+                                 "2-3 days" = 0,"six weeks" = 1,
+                                 "soon after birth" = 0,
+                                 "1 or 2 days old" = 0,
+                                 "one or two days" = 0,
+                                 "One month placed into foster care" = 1,
+                                 "Newborn" = 0,"2-3 months" = 2,
+                                 "1-2 days old" = 0,"about 9 months" = 4,
+                                 "to children's hospital at 6 months, awaiting orphanage placement; to orphanage at 13 months" = 6,
+                                 "10 days" = 1,"6 months" = 3,
+                                 "9 months" = 4,
+                                 "5 months, placed into foster care" = 3,
+                                 "birth" = 0,"1.5 yo" = 6,
+                                 "I don't know" = 9,
+                                 "Very young, a few months old" = 2,
+                                 "week old" = 0,"7" = 4,"1 month" = 1,
+                                 "Uncertain; possibly 9 months, possibly closer to 18 months" = 9,
+                                 "3 months" = 2)) 
+
+### enter "unknown" as necessary for 1B
+iai4 <- iai4 %>% mutate(IAI_1B_CITYBORN =
+                          recode(IAI_1B_CITYBORN, "unsure" = "unknown"))
+
+### For IAI_5_SEEORPH, IAI_6A_SPECBOND, IAI_9A_HEALTHCONDADOPT,
+### IAI_10A_HEALTHCONDLATER, IAI_14A_DEVADVANCE, IAI_15A_DEVSTRUG, change
+### coding to 0=No and 1=Yes (from 2=N and 1=Y):
+
+iai5 <- iai4
+for (i in c(7, 12, 16, 18, 23, 25)) {
+  iai5[,i] <- lapply(iai4[i],function(x) as.numeric(as.character(x)))
+  iai5[,i] <- lapply(iai5[i],function(x) replace(x,x == 2,0))
+}
+
+
+### Code text responses to months:
+iai5 <- iai5 %>% mutate(IAI_7_AGEADOPT =
+                          recode(IAI_7_AGEADOPT,
+                                 "10 months." = 10,"2 yrs old" = 24,
+                                 "10.5 months" = 10.5,"9 months" = 9,
+                                 "14 months" = 14,"8.5 months" = 8.5,
+                                 "10 months" = 10, "11 months" = 11,
+                                 "ten months" = 10,"10 1/2 months" = 10.5,
+                                 "10 1/2" = 10.5, "10 months" = 10,
+                                 "9 months" = 9, "11 months" = 11,
+                                 "4 months" = 4, "15 months" = 15,
+                                 "26 months" = 26, "15 months" = 15,
+                                 "3.5 years" = 42, "6 years" = 72,
+                                 "7.5 years" = 90, "6 mo" = 6,
+                                 "24 months" = 24, "2.5 YO" = 30,
+                                 "3 yrs" = 36, "20 months" = 20,
+                                 "4 years old" = 48, "2 weeks" = .5,
+                                 "9 month" = 9, "18-19 months " = 18.5,
+                                 "2 years old" = 24, "22 months" = 22))
+
+
+### Replace IAI_12_MONTHADJUST text with numeric codes (per data entry
+### manual).
+iai5["IAI_12_MONTHADJUST"] <- as.character(iai5$IAI_12_MONTHADJUST)
+for (i in 1:nrow(iai5)) {
+  iai5[i,"IAI_12_MONTHADJUST"] <- iai_12_monthadjust[i]
+}
+```
+   
+   
+   ###Compute new variables
+```{r}
+#Before computing, some factors need to be changed to numeric data
+i <- c(4,7:12,15:16,18,20,23,25)
+iai5[,i] <- lapply(iai5[,i], function(x) as.numeric(as.vector(x)))
+```
+   
+   Orph_facility_rating:
+```{r}
+iai5 <- iai5 %>% mutate(Orph_facility_rating =
+                  rowSums(replace(select(iai4,IAI_5B_QUALBUILD,
+                                         IAI_5C_CLEANFAC,
+                                         IAI_2_CITYSIZE),
+                                  is.na(select(iai4,
+                                               IAI_5B_QUALBUILD,
+                                               IAI_5C_CLEANFAC,
+                                               IAI_2_CITYSIZE)),0)))
+```
+   
+   Orph_SocioEmot_Support:
+```{r}
+iai5 <- iai5 %>% 
+  #recode select variables as needed
+  mutate(orph_quantcareg_recode = 11 - IAI_5D_QUANTCAREG,
+         Orph_qualcareg_recode = 11 - IAI_5E_QUALCAREG) %>%
+  #compute new variable
+  mutate(Orph_SocioEmot_Support = 
+           rowSums(replace(select(iai5, IAI_6A_SPECBOND,
+                                  orph_quantcareg_recode,
+                                  Orph_qualcareg_recode),
+                           is.na(select(iai5, IAI_6A_SPECBOND,
+                                  orph_quantcareg_recode,
+                                  Orph_qualcareg_recode)),0)))
+```
+   
+   Orph_healthMet *SEE NOTE*
+```{r}
+### For this variable, you need the dataset to already have been merged (at least) with the PQ questionnaire.
+
+iai5 <- iai5 %>% 
+  #recode select variables as needed
+  mutate(orph_healthadopt_recode  = 11 - IAI_8_HEALTHADOPT) %>%
+  
+  #compute new variable USING ONE VARIABLE FROM THE PQ
+  
+  mutate(Orph_healthMet =
+           rowSums(replace(select(iai5, orph_healthadopt_recode,
+                                  IAI_9A_HEALTHCONDADOPT,
+                                  PQ_6A_GROCHART),
+                           is.na(select(iai5,orph_healthadopt_recode,
+                                  IAI_9A_HEALTHCONDADOPT,
+                                  PQ_6A_GROCHART)), 0)))
+```

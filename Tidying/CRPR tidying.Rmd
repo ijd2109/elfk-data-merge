@@ -1,0 +1,146 @@
+---
+title: "CRPR tidying"
+author: "Ian Douglas"
+date: "4/15/2019"
+output: html_document
+---
+#Load in raw CRPR data 
+```{r}
+(library(tidyverse))
+rm(list=ls())
+df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Parent/CRPR raw.csv", stringsAsFactors = FALSE)
+```
+#View the subject ID field
+```{r}
+df$Q1_1[1:20]
+```
+#mock/test data ends with row 8
+```{r}
+df1 <- df[9:nrow(df),] %>% select(RecordedDate, starts_with("Q"))
+```
+#Evaluate subject IDs
+```{r}
+#test to see if any subject IDs contain only letters
+all.letters(vector = df1$Q1_1) 
+#are there any missing data or NAs?
+which(df1$Q1_1 == "")
+which(is.na(df1$Q1_1))
+#integer(0) indicates none
+```
+#Clean subject ID column
+###according to previous data management script:
+```{r}
+#Make EL086P – first entry  – EL087. Leave second entry as EL086.
+df1$Q1_1[df1$Q1_1 == "el086p"] <- "EL087" 
+```
+###As usual, EL061 typo'd their subject ID
+```{r}
+#re-enter EL061
+df1$Q1_1[df1$Q1_1 == "elo6lp"] <- "EL061"
+```
+
+##Search for duplicates
+```{r}
+id.search(df1, "Q1_1", "RecordedDate")
+```
+##From results of search:
+```{r}
+#“EL041P” is actually EL042. then delete “EL042” as it is a true duplicate
+#for cases where the duplicate entry is entered far after the original, delete the more recent
+df1$Q1_1 <- replace(df1$Q1_1, df1$Q1_1 == "EL041P", "EL042")
+removals <- c(which(
+  df1$Q1_1 == "EL042" & df1$RecordedDate == "2018-05-22 07:17:17" |
+    df1$Q1_1 == "EL127" & df1$RecordedDate == "2018-01-05 13:57:54" |
+    df1$Q1_1 == "ELO96P"))
+df2 <- df1[-removals,]
+```
+#convert data to numeric
+```{r}
+df2[-1:-3] <- lapply(df2[-1:-3], as.numeric)
+```
+
+#split the data frames to deal with cases that were creating duplicates
+```{r}
+df.deduped <- df2[!df2$Q1_1 %in% c(id.search(df2,"Q1_1","RecordedDate")$Raw.entry.1,id.search(df2,"Q1_1","RecordedDate")$Raw.entry.2),]
+df.duped<-df2[df2$Q1_1 %in% c(id.search(df2,"Q1_1","RecordedDate")$Raw.entry.1,id.search(df2,"Q1_1","RecordedDate")$Raw.entry.2),]
+#make the averages per family
+f1.avg <- apply(df.duped[1:2,4:43], 2, mean)
+f2.avg <- apply(df.duped[3:4,4:43], 2, mean)
+f3.avg <- apply(df.duped[5:6,4:43], 2, mean)
+f4.avg <- apply(df.duped[7:8,4:43], 2, mean)
+f5.avg <- apply(df.duped[9:10,4:43], 2, mean)
+
+
+#make rows for each sibling in each family.
+df.duped.2 <- rbind(df.duped[1,],df.duped[1,],df.duped[1,],df.duped[1,],
+                    df.duped[3,],df.duped[3,],
+                    df.duped[6,],df.duped[6,],
+                    df.duped[7,],df.duped[7,],df.duped[7,],df.duped[7,],df.duped[7,],
+                    df.duped[9,],df.duped[9,])
+df.duped.2[1:4,4:43] <- f1.avg
+df.duped.2[5:6,4:43] <- f2.avg
+df.duped.2[7:8,4:43] <- f3.avg
+df.duped.2[9:13,4:43] <- f4.avg
+df.duped.2[14:15,4:43] <- f5.avg
+
+#correct the subject ID field
+df.duped.2$Q1_1 <- c("EL002","EL003","EL004","EL005",
+                     "EL019","EL020",
+                     "EL036","EL037",
+                     "EL081","EL082","EL083","EL084","EL085",
+                     "EL086","EL087")
+```
+#Bind the data frames back together
+```{r}
+df3 <- rbind(df.deduped,df.duped.2)
+```
+
+##One parent filled out the form on behalf of both children
+```{r}
+# df3$Q1_1[grep("and", df3$Q1_1)]
+# [1] "EL104 and EL105"
+### Split this entry into two, duplicate the responses
+df4 <- rbind(df3, df3[grep("and", df3$Q1_1),])
+df4$Q1_1[grep("and", df4$Q1_1)] <- c("EL104","EL105")
+```
+
+##With subject IDs either correct or flagged, process IDs:
+```{r}
+df5 <- ELFK.identsubid(df4, "Q1_1")
+#rename
+names(df5) <- replace(
+  names(df5), names(df5) == "Q1_1", "IDENT_SUBID"
+  )
+```
+
+#Format the dates
+```{r}
+df6 <- format.date(df5, "RecordedDate")
+#also remove the user-entered date
+df6 <- df6[,-grep("Q1_2",names(df6))]
+```
+
+#attach the variable names
+```{r}
+v.names <- c("CRPR_DATE_COMPLETE","IDENT_SUBID", "CRPR_1",
+                 "CRPR_2", "CRPR_3", "CRPR_4", "CRPR_5", 
+                 "CRPR_6", "CRPR_7", "CRPR_8",
+                 "CRPR_9", "CRPR_10", "CRPR_11", "CRPR_12",
+                 "CRPR_13", "CRPR_14", "CRPR_15", "CRPR_16",
+                 "CRPR_17","CRPR_18", "CRPR_19", "CRPR_20",
+                 "CRPR_21", "CRPR_22", "CRPR_23", "CRPR_24",
+                 "CRPR_25", "CRPR_26","CRPR_27", "CRPR_28",
+                 "CRPR_29", "CRPR_30", "CRPR_31", "CRPR_32",
+                 "CRPR_33", "CRPR_34", "CRPR_35",
+                 "CRPR_36", "CRPR_37", "CRPR_38", 
+                 "CRPR_39", "CRPR_40")
+names(df6) <- v.names
+```
+
+#Done
+#Write out the tidy data!
+```{r}
+write_rds(df6,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/CRPR_tidy.rds")
+```
+
+

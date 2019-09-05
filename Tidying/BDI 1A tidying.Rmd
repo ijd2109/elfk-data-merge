@@ -1,0 +1,159 @@
+---
+title: "BDI tidying"
+author: "Ian Douglas"
+date: "6/3/2019"
+output: html_document
+---
+#load in raw data
+```{r}
+rm(list=ls())
+suppressPackageStartupMessages(library(tidyverse))
+df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/Parent/BDI 1A raw.csv", stringsAsFactors = FALSE)
+```
+#View subject ID column
+```{r}
+df$Q24[1:10] #real data starts on row 9
+tail(df$Q24, 10)
+```
+#Extract desird data
+```{r}
+df1 <- df[-1:-8,] %>% select(RecordedDate, starts_with("Q"))
+```
+#Check for duplicates in the subject ID column
+```{r}
+id.search(df1, "Q24", "RecordedDate")
+```
+1. correct typo (for EL061) that ostensibly created a duplicate, but was not one.
+```{r}
+df1$Q24 <- replace(df1$Q24, df1$Q24=="el06lp", "EL061")
+```
+2. correct typo (for EL081) that ostensibly created a duplicate, but was not one.
+```{r}
+df1$Q24 <- replace(df1$Q24, df1$Q24=="El08lp", "EL081")
+```
+3. Retain the first entry (from 2016 as opposed to 2017) of EL071
+```{r}
+index1 <- which(
+  df1$Q24 == "EL071P" & df1$RecordedDate == "2017-02-24 14:01:42"
+  )
+```
+4. Delete the first entry of EL097 because it contains all missing data
+```{r}
+index2 <- which(
+  df1$Q24 == "EL097" & df1$RecordedDate == "2017-05-31 12:10:56"
+  )
+```
+5. Retain the first entry of EL079 completed on the date of lab visit
+```{r}
+index3 <- which(
+  df1$Q24 == "EL079P" & df1$RecordedDate == "2016-10-16 10:59:20"
+)
+```
+6. Retain the first entry of EL140
+```{r}
+index4 <- which(
+  df1$Q24 == "el140" & df1$RecordedDate == "2018-04-10 13:42:33"
+  )
+```
+#Delete unwanted entries
+```{r}
+to.delete <- c(index1, index2, index3, index4)
+df2 <- df1[-to.delete,]
+```
+#Check that there are no more duplicates:
+```{r}
+id.search(df2, "Q24", "RecordedDate") #Error should read "There are no duplicates"
+```
+#format the id field and date
+```{r}
+df3 <- df2 %>% ELFK.identsubid("Q24") %>% format.date("RecordedDate")
+```
+#correct the datatypes
+```{r}
+df4 <- df3 %>%
+  mutate_at(3:ncol(.), as.numeric)
+```
+#Shift the data so that responses span 0 to 3, not 1 to 4
+```{r}
+df5 <- df4 %>%
+  mutate_at(3:ncol(.), function(x) (x-1))
+```
+#Attach the names
+```{r}
+item.names <- NULL
+for (i in 1:(ncol(df5)-2)) {
+  item.names[i] <- paste0("PARENT_BDI1A_", i, collapse = "")
+}
+vnam <- c("PARENT_BDI1_DATE", "IDENT_SUBID", item.names)
+names(df5) <- vnam
+```
+#merge in the PACCT participants
+```{r}
+df.pacct <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/01 Raw/PACCT/pacct.csv", stringsAsFactors = FALSE)
+```
+#retain bdi data only
+```{r}
+df1.pacct <- df.pacct %>%
+  select(IDENT_SUBID, starts_with("BDI_"))
+```
+#extract the three participants for whom this data is actually completed
+```{r}
+#also, delete the columns containing variables created for another study
+df2.pacct <- df1.pacct[
+  df1.pacct$IDENT_SUBID %in% c("EL144","EL145","EL149"), -grep(".J", names(df1.pacct))
+  ]
+```
+#fix the names
+```{r}
+item.names.pacct <- NULL
+num <- c(1:8,10:21) #exclude 9
+for (i in 1:(ncol(df2.pacct)-1)) {
+  item.names.pacct[i] <- paste0("PARENT_BDI2_", num[i], collapse = "")
+}
+vnam.pacct <- c("IDENT_SUBID", item.names.pacct)
+names(df2.pacct) <- vnam.pacct
+```
+
+#merge the dataframes
+```{r}
+#(drop date from BDI-1A data frame)
+bdi.1a <- data.frame(df5[-1], matrix(rep(NA, times = nrow(df5)*(ncol(df2.pacct)-1)),
+                                     ncol = (ncol(df2.pacct)-1),
+                                     dimnames = list(NULL, names(df2.pacct[-1]))))
+bdi.2 <- data.frame(df2.pacct[1],
+                    matrix(rep(NA, times = nrow(df2.pacct)*(ncol(df5)-2)),
+                           ncol = (ncol(df5)-2),
+                           dimnames = list(NULL, names(df5)[-1:-2])),
+                    df2.pacct[-1])
+#merge
+bdi <- rbind(bdi.1a,bdi.2)
+```
+#On final review, it turns out EL144 and EL149 filled out both versions, so combine their data
+```{r}
+for (i in 1:(ncol(bdi)-1)) {
+  bdi[grep("EL149",bdi$IDENT_SUBID)[1],i+1] <- ifelse(
+    is.na(bdi[grep("EL149",bdi$IDENT_SUBID)[1],i+1]),
+    bdi[grep("EL149",bdi$IDENT_SUBID)[2],i+1],
+    bdi[grep("EL149",bdi$IDENT_SUBID)[1],i+1]
+  )
+}
+for (i in 1:(ncol(bdi)-1)) {
+  bdi[grep("EL144",bdi$IDENT_SUBID)[1],i+1] <- ifelse(
+    is.na(bdi[grep("EL144",bdi$IDENT_SUBID)[1],i+1]),
+    bdi[grep("EL144",bdi$IDENT_SUBID)[2],i+1],
+    bdi[grep("EL144",bdi$IDENT_SUBID)[1],i+1]
+  )
+}
+#Remove the duplicate
+bdi.final <- bdi[!duplicated(bdi$IDENT_SUBID),]
+```
+
+
+
+#Done!
+Write out tidy data
+```{r}
+saveRDS(bdi.final,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/Parent/R/bdi_tidy.rds")
+```
+
+

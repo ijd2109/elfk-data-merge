@@ -1,0 +1,178 @@
+---
+title: "International Adoption Inventory tidying"
+author: "Ian Douglas"
+date: "3/25/2019"
+output: html_document
+---
+
+```{r}
+rm(list=ls())
+df <- read.csv("/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/01 Raw/QUALTRICS/PI/IAI raw.csv", stringsAsFactors = FALSE)
+```
+
+#extract desired data
+```{r}
+#Calling head(df$Q1) suggests that the "real" data starts on row 4
+df1 <- df[4:nrow(df),] %>% select(RecordedDate,starts_with("Q"))
+```
+#search for erroneous entries in the subjet ID column
+```{r}
+quantity.missing = function(x) {
+  apply(x,2, function(x) length(which(x == "")))
+}
+
+where.na = function(x) {
+  apply(x,2, function(x) sum(is.na(x)))
+}
+
+quantity.missing(df1)[2]
+where.na(df1)[2]
+#Conclusion: no missing or NA in the subject ID column
+```
+```{r}
+#RUN THE FULL SEARCH ALGORITHM
+test<-mutate(df1, 
+             Q1 = as.integer(str_extract(df1$Q1,pattern ="\\(?[0-9,.]+\\)?"))) %>%
+  select(Q1)
+#then define "dup"
+dup <- which(duplicated(test$Q1))
+
+#create a side-by-side comparison (2-column matrix with the duplicates)
+duplicates <- matrix(cbind(rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup))), 
+                     ncol=5)
+#now fill it with your values that were duplicated
+for (i in 1:length(dup)) {
+  duplicates[i,] <- c(rep(NA_character_, times=ncol(duplicates)-length(which(test$Q1==test$Q1[dup[i]]))),
+                      df1$Q1[which(test$Q1==test$Q1[dup[i]])])
+}
+colnames(duplicates) <- c(rep("Raw entry",times=5))
+#duplicates
+#Repeat this process with raw dates and raw times.
+#create the matrix to capture the date output as well.
+dates <- matrix(cbind(rep(NA_character_,times=length(dup)),
+                      rep(NA_character_,times=length(dup)),
+                      rep(NA_character_,times=length(dup)),
+                      rep(NA_character_,times=length(dup)),
+                      rep(NA_character_,times=length(dup))), 
+                ncol=5)
+for (i in 1:length(dup)) {
+  dates[i,] <- c(rep(NA_character_, times=ncol(duplicates)-length(which(test$Q1==test$Q1[dup[i]]))),
+                 as.character(df1$RecordedDate[which(test$Q1==test$Q1[dup[i]])]))
+}
+
+#combine the matrices and order the columns to see associated info side by side.
+
+search <- cbind(as.data.frame(duplicates),
+                as.data.frame(dates))[,c(4,9,5,10)]
+names(search) <- c("raw entry #1", "timestamp1","raw entry #2","timestamp2")
+search
+```
+#Conclusion: there are two duplicates, one each for clients EL104 and EL105
+#As per discussion with Michelle V. and Bridget C., remove newer entry
+```{r}
+#index the rows to remove
+i <- c(which(df1$Q1=="EL104" & df1$RecordedDate == "2018-06-13 17:58:57"),
+       which(df1$Q1=="EL105" & df1$RecordedDate == "2018-06-13 18:07:06"))
+#remove them
+df2 <- df1[-i,]
+```
+#Standardize the subject ID field
+```{r}
+df3 <- ELFK.identsubid(df2,"Q1")
+```
+#format the dates (remove hours, minutes, and seconds)
+```{r}
+df4 <- df3 %>% 
+  mutate_at(1, function(x) strtrim(x,10)) %>%
+  mutate_at(1, function(x) as.Date(x, format = "%Y-%m-%d"))
+```
+#attach the variable names
+```{r}
+var.names <- cbind("IAI_DATE_COMPLETE","IDENT_SUBID", "IAI_1A_COUNTRYADOPT",
+                   "IAI_1B_CITYBORN", "IAI_2_CITYSIZE","IAI_3_AGEORPH",
+                   "IAI_4_HOWORPH",
+                   "IAI_5A_SEEORPH","IAI_5B_QUALBUILD",
+                   "IAI_5C_CLEANFAC", "IAI_5D_QUANTCAREG", "IAI_5E_QUALCAREG",
+                   "IAI_6A_SPECBOND", "IAI_6B_EXPLAN", "IAI_7_AGEADOPT",
+                   "IAI_8_HEALTHADOPT", "IAI_9A_HEALTHCONDADOPT",
+                   "IAI_9B_EXPLAN", "IAI_10A_HEALTHCONDLATER", 
+                   "IAI_10B_EXPLAN", "IAI_11_REACTMEET", 
+                   "IAI_12_MONTHADJUST", "IAI_13_CHALLADOPTINT", 
+                   "IAI_14A_DEVADVANCE", "IAI_14B_EXPLAN", "IAI_15A_DEVSTRUG",
+                   "IAI_15B_EXPLAN", "IAI_16_REWADOPT", "IAI_17_AREACHILDEXCEL",
+                   "IAI_18_AREACHILDSTRUG", "IAI_19B_EXPLAN")
+
+names(df4) <- var.names
+#add the variable that we have to create
+df4$IAI_19A_OTHERINFO <- ifelse(df4$IAI_19B_EXPLAN == "", 0L, 1L)
+#change the order of the last two variables now
+df4 <- df4[,c(1:(ncol(df4)-2),ncol(df4),(ncol(df4)-1))]
+```
+
+```{r}
+#recode the country names so that there is one format per county
+df4$IAI_1A_COUNTRYADOPT <- ifelse(df4$IAI_1A_COUNTRYADOPT=="USA" | df4$IAI_1A_COUNTRYADOPT=="US","United States",df4$IAI_1A_COUNTRYADOPT)
+```
+#code orphanage age question
+```{r}
+#interpret and recode the text according to the data entry manual
+ageorph<-c(1L,NA_integer_,0L,0L,0L,2L,0L,1L,0L,0L, 0L,1L,0L,
+            0L,2L,0L,4L,3L,1L, 3L,4L,3L,NA_integer_,0L,6L,9L,2L,1L,NA_integer_,
+            4L,1L,9L,1L,2L,2L,1L,NA_integer_,0L,6L,4L,1L,0L,2L,1L,6L)
+df5 <- df4 %>% mutate_at(which(names(df4)=="IAI_3_AGEORPH"),function(x) replace(x,1:45,ageorph))
+```
+#change desired variables to numeric from type character
+```{r}
+df5[c(5,6,8,9,10,11,12,13,16,17,19,21,24,26)]<-lapply(df5[c(5,6,8,9,10,11,12,13,16,17,19,21,24,26)],as.numeric)
+```
+#recode variables that were miscoded by qualtrics' output
+```{r}
+#The following variables have the following system:
+#1 exported from qualtrics as "Yes", but "No" became 2 [fix "No" to 0]
+i <- c(grep("IAI_5A_SEEORPH",names(df5)),
+       grep("IAI_6A_SPECBOND",names(df5)),
+       grep("IAI_9A_HEALTHCONDADOPT",names(df5)),
+       grep("IAI_10A_HEALTHCONDLATER",names(df5)),
+       grep("IAI_14A_DEVADVANCE",names(df5)),
+       grep("IAI_15A_DEVSTRUG",names(df5)))
+df5 <- df5 %>% mutate_at(i, function(x) replace(x,grep(2,x),0))
+```
+#code adoption age to numeric
+```{r}
+#interpret and recode the text according to the data entry manual
+ageadopt<-c(10,24,10.5,9,14,8.5,10,11,10,10.5,10.5,10,9,11,4,15,
+            22,26,15,42,72,90,6,24,30,36,20,48,.5,9,5,18.5,24,22,
+            7.25,11,6,9,12,30,1.5,2,2,7,25)
+df6 <- df5 %>% mutate_at(which(names(df5)=="IAI_7_AGEADOPT"),function(x) replace(x,1:nrow(df5),ageadopt))
+#change datatype ot numeric
+#df6 <- df5
+df6[which(names(df6)=="IAI_7_AGEADOPT")] <- lapply(df6[which(names(df6)=="IAI_7_AGEADOPT")],as.numeric)
+```
+#code adjustment time variable to numeric
+```{r}
+#interpret and recode the text according to the data entry manual
+timeadj<-c(9, 1, 1, 0, 2, 1, 2, 10, 0, 1,
+           1, 2, 1, 3, 0, 5, 3, 0, 3, 3,
+           5, 9, 0, 10, 3, 0, 1, 9, 0, 1,
+           9, 1, 1, 4, 10, 4, 3, 0, 0, 9,
+           1, 2, 2, 0, 1)
+df6$IAI_12_MONTHADJUST <- timeadj 
+```
+#NOTE: merge in pacct participants in the "scoring" script
+###Since pacct participants will only have partial data.
+
+#Write out tidy data! 
+```{r}
+write_rds(df6,"/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/PI/R/IAI_tidy.Rds")
+library(haven)
+#convert all fields to character for csv and sav write-out
+df7 <- as.data.frame(lapply(df6[,1:ncol(df6)], function(x) as.character(x)),
+                     stringsAsFactors = F)
+write.csv(df7, "/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/PI/csv/IAI_tidy.csv", row.names = FALSE)
+write_sav(df7, "/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/02 Tidied/QUALTRICS/PI/SPSS/IAI_tidy.sav")
+```
+

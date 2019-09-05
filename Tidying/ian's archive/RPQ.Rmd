@@ -1,0 +1,111 @@
+---
+title: "RPQ"
+author: "Ian Douglas"
+date: "3/4/2019"
+output: html_document
+---
+# Produced by Ian Douglas
+   
+###Extract Data
+```{r}
+df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Raw/QUALTRICS/Qualtrics_Raw_Relationship_Problems_Questionnaire.csv")
+```  
+   
+#View data 
+```{r}
+#View data
+View(df)
+#Looks like there's no fake data: exract relevant rows and columns.
+df1 <- df[3:nrow(df),] %>% select(RecordedDate,starts_with("Q"))
+```
+   
+#Standardize subject ID numbers
+```{r}
+#Change variable from factor to character
+df2 <- df1 %>%
+  # extract id NUMBERS only
+  mutate(Q1 = as.integer(str_extract(df1$Q1, 
+                                         pattern ="\\(?[0-9,.]+\\)?")))%>%
+  # add prefix "EL00", "EL0", or "EL" as necessary; rename:
+  mutate(IDENT_SUBID = paste0(ifelse(nchar(Q1)==1,"EL00",
+                                ifelse(nchar(Q1)==2,"EL0",
+                                       "EL")), Q1)) %>%
+  # remove old Q1 and return to desired order
+  select(RecordedDate,IDENT_SUBID, everything(), -Q1)
+```
+   
+#Rename variables
+```{r}
+var_names <- cbind("RPQ_DATE_COMPLETE", "IDENT_SUBID","RPQ_1",
+                   "RPQ_2","RPQ_3", "RPQ_4", 
+                   "RPQ_5", "RPQ_6", "RPQ_7",
+                   "RPQ_8", "RPQ_9")
+names(df2) <- var_names
+```
+
+#Convert factors to numeric
+```{r}
+df3 <- df2
+#Numeric RPQ questionnaire responses begin with column 3, continue to the end of df
+for (i in 3:ncol(df3)) {
+  df3[i] <- as.numeric(as.character(df3[,i]))
+}
+```
+      
+#Recode the qualtrics output to data entry manual guidelines
+```{r}
+#split the dataframe to run the recode algorithm on only numeric variables:
+tmp <- df3[,3:ncol(df3)]
+#run recode and rejoin it with the date and subject ID fields:
+df4 <- cbind(df3[,1:2], 
+             apply(tmp, 2, function(z)
+               as.numeric(ifelse(grepl(4, z), 0,
+                                 ifelse(grepl(3, z), 1,
+                                        ifelse(grepl(2, z), 2,
+                                               ifelse(grepl(1, z), 3, "")))))))
+```
+
+#Create sum variable
+```{r}
+df5 <- df4 %>% group_by(IDENT_SUBID) %>%
+  mutate(RPQ_SUM = sum(RPQ_1, RPQ_2, RPQ_3, RPQ_4,
+                       RPQ_5, RPQ_6, RPQ_7, RPQ_8,
+                       RPQ_9, na.rm=TRUE))
+```
+
+Remove two entries of "EL145" that are chronologically farthest from when
+their parent filled out their sibling ("EL144")'s data
+```{r}
+#convert dates to mathematically substractable units in a temporary df
+dates <- as.Date.character(gsub(" ", "", substr(df5$RPQ_DATE_COMPLETE,
+                                                       1, 7),fixed =TRUE),
+                                  tryFormats=c("%m/%d/%y","%m/%D/%y"))
+#calculate chronological differences
+sibling.reference.date <- dates[which(df5$IDENT_SUBID =="EL144")]
+#subtract the instances of the other sibling's dates
+sibling.reference.date - dates[which(df5$IDENT_SUBID == "EL145")]
+#output is 9 0 and 0, so the second two observations of "EL145" are on the
+#same day as the reference sibling's observation. Narrowing search to 
+# the second two of the following rows of "EL145":
+c((which(df5$IDENT_SUBID == "EL145")))[1:3]
+#[1] 42 47 48
+
+#compare by which was closer in minutes, grab the minutes in numeric format:
+# reference sibling:
+sibling.reference.time <- substr(df4$RPQ_DATE_COMPLETE, nchar(as.character(df4$RPQ_DATE_COMPLETE))-5, nchar(as.character((df4$RPQ_DATE_COMPLETE))))[which(df5$IDENT_SUBID =="EL144")]
+#visually compare the other two times
+c(sibling.reference.time, substr(df4$RPQ_DATE_COMPLETE, nchar(as.character(df4$RPQ_DATE_COMPLETE))-5, nchar(as.character((df4$RPQ_DATE_COMPLETE))))[47:48])
+#[1] " 15:14" " 15:15" " 15:27"  ## The first time was the reference sibling
+#Conclusion row 47 contains the closest observation of "EL0145" to keep.
+df6 <- df5[-c(42,48),]
+#check how many observations we retained for subject "EL145":
+sum(df6$IDENT_SUBID == "EL145")
+#[1] 1
+```
+
+#Write out csv and sav files
+```{r}
+write.csv(df5, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Processed/Qualtrics_Cleaned_in_R_Relationship_Problems_Questionnaire.csv", row.names = F)
+#library(haven)
+write_sav(df5, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Processed/Qualtrics_Cleaned_in_R_Relationship_Problems_Questionnaire.sav")
+```

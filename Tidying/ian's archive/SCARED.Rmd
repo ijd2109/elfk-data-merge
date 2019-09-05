@@ -1,0 +1,179 @@
+---
+title: "SCARED"
+author: "Ian Douglas"
+date: "2/21/2019"
+output: html_document
+---
+
+SCARED data processing
+Produced by Ian Douglas
+
+###Load data
+```{r}
+library(tidyverse)
+### read in the data
+df<-read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Raw/QUALTRICS/Qualtrics_Raw_Scared_for_childhood_anxiety_related_disorders_Questionnaire.csv")
+```
+
+#Run search to identify problematic subject IDs before standardizing
+```{r}
+test<-mutate(df1, 
+             Q3 = as.integer(str_extract(df1$Q3,pattern ="\\(?[0-9,.]+\\)?"))) %>%
+  select(Q3)
+#then define "dup"
+dup <- which(duplicated(test$Q3))
+
+#create a side-by-side comparison (2-column matrix with the duplicates)
+duplicates <- matrix(cbind(rep(NA_character_,times=length(dup)),rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup)),rep(NA_character_,times=length(dup)),
+                           rep(NA_character_,times=length(dup))), 
+                     ncol=5)
+#now fill it with your values that were duplicated
+for (i in 1:length(dup)) {
+  duplicates[i,] <- c(rep(NA_character_, times=ncol(duplicates)-length(which(test$Q3==test$Q3[dup[i]]))),
+                      df1$Q3[which(test$Q3==test$Q3[dup[i]])])
+}
+duplicates
+#       [,1] [,2] [,3]  [,4]     [,5]     
+#  [1,] NA   NA   "111" "111"    "EL111"  
+#  [2,] NA   NA   "999" "999"    "999"    
+#  [3,] NA   NA   NA    "EL041P" "el041"  
+#  [4,] NA   NA   NA    "EL016"  "EL016_2"
+#  [5,] NA   NA   NA    "EL006"  "el06lp" 
+#  [6,] NA   NA   "999" "999"    "999"    
+#  [7,] NA   NA   NA    "98"     "98"     
+#  [8,] NA   NA   "111" "111"    "EL111"  
+#  [9,] NA   NA   NA    "EL127p" "EL127"  
+# [10,] NA   NA   NA    "EL104"  "EL104"  
+
+# The output shows us we need to remove "111" and "999" before processing,
+# one duplicate each of subject "EL041","EL016", "EL098", EL127", and "EL104",
+# and we need to recode "el06lp" as "EL061" so that it does not appear to be a 
+# duplicate of subject "EL006"
+```
+   
+###Filter duplicates, extra data, etc.   
+```{r}
+### After discussion with Tricia, remove rows with id #'s, due to fake/erroneous data: "111"    "999"    "EL016"  "98"     "EL041P" "EL127"  ""
+remove.ids <- c("111","999","EL016","EL041P","EL127","")
+df1 <- df %>% filter(!Q3 %in% remove.ids)
+### remove one (the erroneous) observation of participant #98 that was duplicated.
+i <- as.numeric(which(df1$Q3=="98" & df1$RecordedDate == "4/2/17 17:20"))
+df1 <- df1[-i,]
+#extract columns and rows containing SCARED data (remove extraneous qualtrics output)
+df2 <- df1[3:nrow(df1),c(8,18:ncol(df1))]
+```
+
+###Apply and tidy Subject Id's
+```{r}
+### Recode participant ids to standard format.
+#change el06l entry to el061 (letter l to 1) and EL016_2 to EL016 (avoiding split when editing in next steps)
+df3 <- df2 %>% mutate(Q3 = as.character(Q3))
+df3[48,2] <- "EL061"
+df3[34,2] <- "EL016"
+
+df4 <- df3 %>%
+  # extract id NUMBERS only
+  mutate(Q3 = as.integer(str_extract(df3$Q3, 
+                                         pattern ="\\(?[0-9,.]+\\)?")))%>%
+  # add prefix "EL00", "EL0", or "EL" as necessary; rename:
+  mutate(IDENT_SUBID = paste0(ifelse(nchar(Q3)==1,"EL00",
+                                ifelse(nchar(Q3)==2,"EL0",
+                                       "EL")), Q3)) %>%
+  select(IDENT_SUBID, Q2_1:Q2_41, RecordedDate)
+
+### AS PER discussion with Tricia, delete duplicate entry for participant "EL104"
+i<-as.numeric(which(df4$IDENT_SUBID == "EL104" & df4$RecordedDate=="6/4/18 17:30"))
+df4 <- df4[-i,]
+```
+   
+   
+###Rename columns
+```{r}
+var_names <- c("IDENT_SUBID", "SCARED_1", "SCARED_2", "SCARED_3", "SCARED_4", 
+               "SCARED_5","SCARED_6","SCARED_7","SCARED_8","SCARED_9","SCARED_10",
+               "SCARED_11","SCARED_12","SCARED_13","SCARED_14","SCARED_15","SCARED_16",
+               "SCARED_17","SCARED_18","SCARED_19","SCARED_20","SCARED_21","SCARED_22",
+               "SCARED_23","SCARED_24","SCARED_25","SCARED_26","SCARED_27","SCARED_28",
+               "SCARED_29","SCARED_30","SCARED_31","SCARED_32","SCARED_33","SCARED_34",
+               "SCARED_35","SCARED_36","SCARED_37", "SCARED_38", "SCARED_39",
+               "SCARED_40","SCARED_41", "SCARED_DATE_COMPLETE")
+names(df4) <- var_names
+```
+   
+   
+###Convert to numeric   
+```{r}
+###Convert all numeric variables from factors to numeric class
+df4[,2:42]<-lapply(df4[,2:42], function(x) as.numeric(as.character(x)))
+```
+   
+   
+###Recode
+```{r}
+df5 <- df4
+df5[,2:42] <- lapply(df5[,2:42], function(x) (x - 1))
+```
+   
+###Code subscales  
+```{r}
+#First, put all numeric raw data adjacent in the dataframe:
+df6 <- df5 %>% select(SCARED_DATE_COMPLETE,IDENT_SUBID, everything()) %>% group_by(IDENT_SUBID)
+
+#SCARED_ANXDIS
+df6 <- df6 %>% mutate(SCARED_ANXDIS = mean(c(SCARED_1, SCARED_2, SCARED_3, SCARED_4, SCARED_5, SCARED_6, SCARED_7 , SCARED_8, SCARED_9, SCARED_10, SCARED_11, SCARED_12, SCARED_13, SCARED_14, SCARED_15, SCARED_16, SCARED_17, SCARED_18, SCARED_19, SCARED_20, SCARED_21, SCARED_22, SCARED_23, SCARED_24, SCARED_25, SCARED_26, SCARED_27, SCARED_28, SCARED_29, SCARED_30, SCARED_31, SCARED_32, SCARED_33, SCARED_34, SCARED_35, SCARED_36, SCARED_37, SCARED_38, SCARED_39, SCARED_40, SCARED_41),
+                                           na.rm=TRUE)*41)
+
+#SCARED_GAD
+df6 <- df6 %>% mutate(SCARED_GAD = mean(c(SCARED_5, SCARED_7, SCARED_14, SCARED_21, SCARED_23, SCARED_28, SCARED_33, SCARED_35, SCARED_37),
+                                        na.rm=TRUE)*9)
+#SCARED_PANIC
+df6 <- df6 %>% mutate(SCARED_PANIC = mean(c(SCARED_1, SCARED_6, SCARED_9, SCARED_12, SCARED_15, SCARED_18, SCARED_19, SCARED_22, SCARED_24, SCARED_27, SCARED_30, SCARED_34, SCARED_38),
+                                          na.rm=TRUE)*13)
+#SCARED_SOCANX
+df6 <- df6 %>% mutate(SCARED_SOCANX = mean(c(SCARED_3, SCARED_10, SCARED_26, SCARED_32, SCARED_39, SCARED_40, SCARED_41),
+                                           na.rm=TRUE)*7)
+#SCARED_SEPANX
+df6 <- df6 %>% mutate(SCARED_SEPANX = mean(c(SCARED_4, SCARED_8, SCARED_13, SCARED_16, SCARED_20, SCARED_25, SCARED_29, SCARED_31),
+                                           na.rm=TRUE)*8)
+#SCARED_SCHOANX
+df6 <- df6 %>% mutate(SCARED_SCHOANX = mean(c(SCARED_2, SCARED_11, SCARED_17, SCARED_36),
+                                            na.rm=TRUE)*4)
+#SCARED_ANXYN
+df6 <- df6 %>% mutate(SCARED_ANXYN = ifelse(SCARED_ANXDIS <= 24, 0, 1))
+
+#SCARED_GADYN
+df6 <- df6 %>% mutate(SCARED_GADYN = ifelse(SCARED_GAD <= 8, 0, 1))
+
+#SCARED_PANICYN
+df6 <- df6 %>% mutate(SCARED_PANICYN = ifelse(SCARED_PANIC <= 6, 0, 1))
+
+#SCARED_SOCANXYN
+df6 <- df6 %>% mutate(SCARED_SOCANXYN = ifelse(SCARED_SOCANX <= 7, 0, 1))
+
+#SCARED_SEPANXYN
+df6 <- df6 %>% mutate(SCARED_SEPANXYN = ifelse(SCARED_SEPANX <= 4, 0, 1))
+
+#SCARED_SCHANXYN
+df6 <- df6 %>% mutate(SCARED_SCHOANXYN = ifelse(SCARED_SCHOANX <= 2, 0, 1))
+
+#SCARED_SUMANYANXDIS (do not remove variables on which it is based)
+df6 <- df6 %>% mutate(SCARED_SUMANYANXDIS = sum(SCARED_GADYN, SCARED_PANICYN, SCARED_SOCANXYN, SCARED_SEPANXYN, SCARED_SCHOANXYN,
+                                                na.rm = TRUE))
+
+#Recode SCARED_SUMANYANXDIS into SCARED_ANYANXYN
+df6 <- df6 %>% mutate(SCARED_ANYANXYN = ifelse(SCARED_SUMANYANXDIS <= 0, 0, 1))
+```
+   
+###Output csv   
+```{r}
+###Write CSV and store with processed data
+write.csv(df6, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Processed/Qualtrics_Raw_Scared_for_childhood_anxiety_related_disorders_Questionnaire.csv", row.names = FALSE)
+```
+   
+   
+###Output .sav (SPSS)
+```{r}
+library(haven)
+write.csv(df6, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Processed/Qualtrics_Raw_Scared_for_childhood_anxiety_related_disorders_Questionnaire.sav")
+```

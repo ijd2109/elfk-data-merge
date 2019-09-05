@@ -1,0 +1,228 @@
+---
+title: "Security_Scale"
+author: "Ian Douglas"
+date: "2/27/2019"
+output: html_document
+---
+
+Security Scale data processing
+Produced by Ian Douglas
+
+###Required packages
+```{r}
+library(tidyverse)
+```
+   
+   ###Load data
+```{r}
+df <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Raw/QUALTRICS/Qualtrics_Raw_SecurityScale_Questionnaire.csv")
+```
+   
+Extract desired rows and columns 
+```{r}
+#remove rows with fake data and qualtrics artifacts
+df1 <- df[7:nrow(df),]
+#delete further test data from remaining set
+df1 <- df1[c(as.numeric(which(df1$Q1_1 == "fgh"))*-1),]
+df1 <- df1[c(as.numeric(which(df1$Q1_1 == "17"))*-1),]
+df1 <- df1[c(as.numeric(which(df1$Q1_1 == "1"))*-1),]
+#select columns with the date and the variables of interest;
+#exclude participant-entered date due to innaccuries, retain
+#qualtrics-generate date
+df1 <- df1 %>% select(RecordedDate, starts_with("Q"), -Q1_2)
+#OPTIONAL: check that 130 rows of 32 variables were retained:
+dim(df1)
+```   
+
+#Standardize the subject ID
+```{r}
+df2 <- df1 %>%
+  # extract id NUMBERS only
+  mutate(Q1_1 = as.integer(str_extract(df1$Q1_1, 
+                                         pattern ="\\(?[0-9,.]+\\)?")))%>%
+  # add prefix "EL00", "EL0", or "EL" as necessary; rename:
+  mutate(IDENT_SUBID = paste0(ifelse(nchar(Q1_1)==1,"EL00",
+                                ifelse(nchar(Q1_1)==2,"EL0",
+                                       "EL")), Q1_1)) %>%
+  # remove old Q1_1 and return to desired order
+  select(RecordedDate,IDENT_SUBID, everything(), -Q1_1)
+```   
+
+#reformat data to numeric   
+```{r}
+df3 <- df2
+#Numeric SS responses begin with column 3, continue to the end of df
+for (i in 3:ncol(df3)) {
+  df3[i] <- as.numeric(as.character(df3[,i]))
+}
+``` 
+
+#Rename the variables
+```{r}
+var_names <- cbind("SS_DATE_COMPLETE", "IDENT_SUBID", "SS_NEW_1A",
+                   "SS_NEW_1B","SS_NEW_2A","SS_NEW_2B","SS_NEW_3A",
+                   "SS_NEW_3B","SS_NEW_4A","SS_NEW_4B","SS_NEW_5A",
+                   "SS_NEW_5B","SS_NEW_6A","SS_NEW_6B","SS_NEW_7A",
+                   "SS_NEW_7B","SS_NEW_8A","SS_NEW_8B","SS_NEW_9A",
+                   "SS_NEW_9B","SS_NEW_10A","SS_NEW_10B","SS_NEW_11A",
+                   "SS_NEW_11B","SS_NEW_12A","SS_NEW_12B","SS_NEW_13A",
+                   "SS_NEW_13B","SS_NEW_14A","SS_NEW_14B","SS_NEW_15A",
+                   "SS_NEW_15B")
+names(df3) <- var_names
+```
+  
+
+#Code subscales
+```{r}
+#Recode all binary variables to a=0 and b=1, rather than a=1 and b=2.
+# (every other variable from 1A to 15A)
+df3[,seq(from=3,to=31,by=2)] <- apply(df3[seq(from=3,to=31,by=2)],
+                                      2, function(x) (x-1))
+#Prepare a function to recode the 4 combinations of paired responses to questions 1A x 1B,
+#through 15A x 15B.
+#x is the binary variable ending in A (a was coded 1, b = 2), and y is the
+#variable of the same number that is coded 1, 2, 3, or 4 in the raw data.
+
+SS.recode = function(x,y) {
+  char <- character()
+  for (i in 1:length(x)) {
+    char[i] <- paste0(x[i],y[i])
+  }
+output <- as.numeric(recode(char, 
+                            "01" = 4L, "02" = 4L, 
+                            "03" = 3L, "04" = 3L, 
+                            "14" = 2L, "13" = 2L, 
+                            "12" = 1L, "11" = 1L,
+                            .default = NA_integer_))
+}
+#Create function to do the same, but reverse coding the output:
+SS.reverse.recode = function(x,y) {
+  char <- character()
+  for (i in 1:length(x)) {
+    char[i] <- paste0(x[i],y[i])
+  }
+output <- as.numeric(recode(char, 
+                            "11" = 4L, "12" = 4L, 
+                            "13" = 3L, "14" = 3L, 
+                            "04" = 2L, "03" = 2L, 
+                            "02" = 1L, "01" = 1L,
+                            .default = NA_integer_))
+}
+
+#Create new variables from the 15 pairs of numeric variables:
+df3$SS_NEW_1_SCORE <- SS.recode(df3$SS_NEW_1A, df3$SS_NEW_1B)
+df3$SS_NEW_2_SCORE <- SS.reverse.recode(df3$SS_NEW_2A, df3$SS_NEW_2B)
+df3$SS_NEW_3_SCORE <- SS.recode(df3$SS_NEW_3A, df3$SS_NEW_3B)
+df3$SS_NEW_4_SCORE <- SS.recode(df3$SS_NEW_4A, df3$SS_NEW_4B)
+df3$SS_NEW_5_SCORE <- SS.reverse.recode(df3$SS_NEW_5A, df3$SS_NEW_5B)
+df3$SS_NEW_6_SCORE <- SS.reverse.recode(df3$SS_NEW_6A, df3$SS_NEW_6B)
+df3$SS_NEW_7_SCORE <- SS.reverse.recode(df3$SS_NEW_7A, df3$SS_NEW_7B)
+df3$SS_NEW_8_SCORE <- SS.reverse.recode(df3$SS_NEW_8A, df3$SS_NEW_8B)
+df3$SS_NEW_9_SCORE <- SS.recode(df3$SS_NEW_9A, df3$SS_NEW_9B)
+df3$SS_NEW_10_SCORE <- SS.recode(df3$SS_NEW_10A, df3$SS_NEW_10B)
+df3$SS_NEW_11_SCORE <- SS.reverse.recode(df3$SS_NEW_11A, df3$SS_NEW_11B)
+df3$SS_NEW_12_SCORE <- SS.reverse.recode(df3$SS_NEW_12A, df3$SS_NEW_12B)
+df3$SS_NEW_13_SCORE <- SS.recode(df3$SS_NEW_13A, df3$SS_NEW_13B)
+df3$SS_NEW_14_SCORE <- SS.reverse.recode(df3$SS_NEW_14A, df3$SS_NEW_14B)
+df3$SS_NEW_15_SCORE <- SS.recode(df3$SS_NEW_15A, df3$SS_NEW_15B)
+```   
+
+###Code subscale variables and total mean
+```{r}
+df4 <- df3 %>% group_by(IDENT_SUBID) %>% 
+  mutate(SS_NEW_AVAILABILITY_MEAN = mean(c(SS_NEW_2_SCORE, 
+                                                   SS_NEW_4_SCORE, 
+                                                   SS_NEW_7_SCORE, 
+                                                   SS_NEW_8_SCORE,
+                                                   SS_NEW_10_SCORE),
+                                                 na.rm=TRUE),
+                      SS_NEW_AVAILABILITY_SUM = mean(c(SS_NEW_2_SCORE, 
+                                                   SS_NEW_4_SCORE, 
+                                                   SS_NEW_7_SCORE, 
+                                                   SS_NEW_8_SCORE,
+                                                   SS_NEW_10_SCORE),
+                                                 na.rm=TRUE)*5,
+                      SS_NEW_RELYSTRESS_MEAN = mean(c(SS_NEW_3_SCORE, 
+                                                      SS_NEW_6_SCORE, 
+                                                      SS_NEW_11_SCORE, 
+                                                      SS_NEW_13_SCORE, 
+                                                      SS_NEW_14_SCORE, 
+                                                      SS_NEW_15_SCORE), 
+                                                    na.rm = TRUE),
+                      SS_NEW_RELYSTRESS_SUM = mean(c(SS_NEW_3_SCORE, 
+                                                     SS_NEW_6_SCORE, 
+                                                     SS_NEW_11_SCORE, 
+                                                     SS_NEW_13_SCORE, 
+                                                     SS_NEW_14_SCORE, 
+                                                     SS_NEW_15_SCORE), 
+                                                   na.rm = TRUE)*6,
+                      SS_NEW_COMMUNICATION_MEAN = mean(c(SS_NEW_1_SCORE,
+                                                         SS_NEW_5_SCORE, 
+                                                         SS_NEW_9_SCORE, 
+                                                         SS_NEW_12_SCORE),
+                                                       na.rm=TRUE),
+                      SS_NEW_COMMUNICATION_SUM = mean(c(SS_NEW_1_SCORE,
+                                                         SS_NEW_5_SCORE, 
+                                                         SS_NEW_9_SCORE, 
+                                                         SS_NEW_12_SCORE),
+                                                       na.rm=TRUE)*4)
+#Now the total mean (excluding participants with more than 80% missing data)
+df5 <- df4 %>% group_by(IDENT_SUBID) %>% 
+  mutate(SS_NEW_TOTAL_MEAN = mean(c(SS_NEW_1_SCORE, SS_NEW_2_SCORE,
+                                    SS_NEW_3_SCORE, SS_NEW_4_SCORE,
+                                    SS_NEW_5_SCORE, SS_NEW_6_SCORE,
+                                    SS_NEW_7_SCORE, SS_NEW_8_SCORE,
+                                    SS_NEW_9_SCORE, SS_NEW_10_SCORE,
+                                    SS_NEW_11_SCORE, SS_NEW_12_SCORE,
+                                    SS_NEW_13_SCORE, SS_NEW_14_SCORE,
+                                    SS_NEW_15_SCORE), na.rm = TRUE))
+#And the total mean continuous vairable:
+df5 <- df5 %>% group_by(IDENT_SUBID) %>% 
+  mutate(SS_NEW_TOTAL_SUM = SS_NEW_TOTAL_MEAN*15)
+
+```   
+
+#Merge PACCT participants
+```{r}
+pacct <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Raw/PACCT/pacct.csv")
+#extract variables pertaining to the SS (and the date)
+pacct2 <- pacct %>% select(DEM_1_DATESESS1,IDENT_SUBID,starts_with("SS_"))
+#(Viewed the data to ensure the variables were in the same order)
+#View(pacct2)
+
+#Synchronize variable neames
+pacct3 <- as.data.frame(pacct2)
+names(pacct3) <- names(df5)
+
+SS <- as.data.frame(rbind(as.data.frame(df5),pacct3))
+```    
+
+
+```{r}
+# After discussion with Michelle V. and Bridget C., flag participants who
+# are missing 20% or more of their data on the raw questionnaire
+# and create "adjusted" mean variables that produce NA for such cases.
+
+#calculate for each participant the percentage of NA in their data
+index <- numeric()
+for (i in 1:nrow(SS)) {
+  index[i] <- sum(filter(SS,IDENT_SUBID == SS$IDENT_SUBID[i])[,3:32] %>%
+                    is.na())/length(3:32)
+}
+#binarize it
+SS$SS_MISSING_DATA <- ifelse(index < .2, 1L, NA_integer_)
+#Now transform our two means accordingly
+SS$SS_NEW_TOTAL_MEAN_ADJ <- SS$SS_NEW_TOTAL_MEAN*SS$SS_MISSING_DATA
+SS$SS_NEW_TOTAL_SUM_ADJ <- SS$SS_NEW_TOTAL_SUM*SS$SS_MISSING_DATA
+
+```
+
+#Write out .csv and .sav files 
+```{r}
+library(haven)
+write.csv(SS, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Processed/Qualtrics_Cleaned_in_R_SecurityScale_Questionnaire.csv", row.names = FALSE)
+write_sav(SS, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/Processed/Qualtrics_Cleaned_in_R_SecurityScale_Questionnaire.sav")
+```
+
+
+
