@@ -21,14 +21,23 @@ II. If reading in a .csv file, the date will have reverted back to
 (III. added a variable to indicate if more than 20% of data is missing
   a: recompute means as "adjusted" excluding the above participants)
 IV. The following participants also have PACCT subject IDs
+
   a. EL144 = PA051
+  
   b. EL145 = PA052
+  
   c. EL146 = PA058
+  
   d. EL147 = PA059
+  
   e. EL148 = PA061
+  
   f. EL149 = PA109
+  
   g. EL140 = PA090*
+  
   h. EL141 = PA091*
+  
   
 *These two participants' data is complete in ELFK, but some PACCT data needs to be
 merged from ELFK to the PACCT database.
