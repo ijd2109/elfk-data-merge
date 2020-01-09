@@ -1,0 +1,357 @@
+---
+title: "Cleaning CBCL"
+author: "Michelle.VanTieghem"
+date: "11/30/2018"
+output: html_document
+---
+
+# open indiv item data
+```{r}
+library(tidyverse)
+library(readxl)
+
+CBCL_indiv <- read.csv("/Volumes/danl/ELFK/Data_Entry/Questionnaires/R_Cleaning_Qualtrics_Data/CBCL_RAW/indiv_items_CBCL_Nov_21_2018.csv")
+head(CBCL_indiv)
+nrow(CBCL_indiv)
+
+CBCL_ss <- read.csv("/Volumes/danl/ELFK/Data_Entry/Questionnaires/R_Cleaning_Qualtrics_Data/CBCL_RAW/subscales_CBCL_Nov21_2018_use.csv")
+head(CBCL_ss)
+nrow(CBCL_ss)
+```
+
+
+
+## keep only ELFK data
+```{r}
+CBCLi_ELFK <- subset(CBCL_indiv, grepl("EL", id))
+nrow(CBCLi_ELFK)
+
+CBCLss_ELFK <- subset(CBCL_ss, grepl("EL", id))
+nrow(CBCLss_ELFK)
+```
+
+```{r}
+#Retain the following participants as well, and merge them.
+# EL144 = PA051
+# EL145 = PA052
+# EL149 = PA109
+
+CBCLi_ELFK.p <- rbind(subset(CBCL_indiv, grepl("PA051", id)),
+                    subset(CBCL_indiv, grepl("PA052", id)),
+                    subset(CBCL_indiv, grepl("PA109", id)))
+
+#nrow(CBCLi_ELFK.p)
+
+CBCLss_ELFK.p <- rbind(subset(CBCL_ss, grepl("PA051", id)),
+                     subset(CBCL_ss, grepl("PA052", id)),
+                     subset(CBCL_ss, grepl("PA109", id)))
+#nrow(CBCLss_ELFK.p)
+
+#recode them using the ELFK subject ID scheme
+CBCLi_ELFK.p$id <- c("EL144","EL145","EL149")
+CBCLss_ELFK.p$id <- c("EL144","EL145","EL149")
+#merge them in
+#check dimensions prior to running:
+
+# dim(CBCLi_ELFK)
+# dim(CBCLi_ELFK.merge)
+# dim(CBCLss_ELFK)
+# dim(CBCLss_ELFK.merge)
+# [1] 108 146
+# [1]   3 146
+# [1] 108 222
+# [1]   3 222
+```
+
+```{r}
+# Resultant dimension should be 111 146, and 111 222
+CBCLi_ELFK <- rbind(CBCLi_ELFK, CBCLi_ELFK.p)
+
+CBCLss_ELFK <- rbind(CBCLss_ELFK, CBCLss_ELFK.p)
+dim(CBCLi_ELFK)
+dim(CBCLss_ELFK)
+```
+
+## get individual items out 
+```{r}
+
+class(CBCLi_ELFK$bpitems)
+# convert into character string so we can get out each digit.
+CBCLi_ELFK$bpitems <- as.character(CBCLi_ELFK$bpitems)
+# 121 items contained in here!
+nchar(CBCLi_ELFK$bpitems[1])
+
+ii_df <- data.frame()
+
+# create a loop to make a new df for each subject's individual items
+for (i in 1:nrow(CBCLi_ELFK)){
+  # convert string of characters into dataframe of characters.
+   sub_ii <- (unlist(strsplit(CBCLi_ELFK$bpitems[i], split = "")))
+   # remove the first item in the list, which is a parentheses
+   # and convert into a nice datafarme
+  sub_ii2 <- data.frame(t(sub_ii[2:length(sub_ii)]))
+  # add the subjectid to the dataframe
+  sub_ii2$SUBJECTID <-  CBCLi_ELFK$id[i]
+  # merge this subject's row of cbcl items into the larger df
+   ii_df <- rbind(ii_df, sub_ii2)
+}
+
+head(ii_df)
+names_fix <- names(ii_df)
+names_new <- str_replace(names_fix, "X", "CBCL_")
+names(ii_df) <- names_new
+```
+
+## fix NA coding from CBCL software
+```{r}
+# convert 9s to NA 
+
+ii_df[ii_df==9]<-NA
+summary(ii_df[1:5])
+```
+
+
+# now clean up summary score data
+## get names for CBCL subscales from tricia's  template
+```{r}
+# name_template <- read.csv("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/R_Merge_Master_MVT/templates/ELFK_VARIABLES_template.csv")
+name_template <- read_xls("/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/archive/old_MVT_merge/archived_templates/ELFK_VARIABLES_template_with_notes_MVT.xls",
+                          sheet=1, col_names=F)
+#extract the cbcl variable names
+cbcl.names <- name_template$X__1[(grepl("CBCL_4", name_template$X__1))]
+CBCL_names <- substr(cbcl.names, 1, str_locate(cbcl.names, "\t")[,1]-1)
+```
+
+## match these to actual data
+### First, "problem" subscales
+```{r}
+#sc variables are the subscale variables that we want to keep...
+subscale_vars <- CBCLss_ELFK[grepl("sc", names(CBCLss_ELFK))]
+head(subscale_vars)
+subscale_vars$SUBJECTID <- CBCLss_ELFK$id
+
+# check the names... this is in weird long format...
+subscale_names <- subscale_vars[grepl("name", names(subscale_vars))]
+head(subscale_names)
+# important: they are not identical per column in terms of what the label is... so it's kind of problematic. 
+summary(subscale_names)
+
+AnxDep_df <- subscale_vars %>%
+  filter(sc3name == "AnxDep") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc3pct, sc3t, sc3raw)
+
+names(AnxDep_df)[2:4] <- as.character(CBCL_names[grepl("ANXDEP", CBCL_names)])
+head(AnxDep_df)
+
+
+Agg_df <- subscale_vars %>%
+  filter(sc8name == "Aggressive") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc8pct, sc8t, sc8raw)
+
+names(Agg_df)[2:4] <- as.character(CBCL_names[grepl("AGGR", CBCL_names)])
+head(Agg_df)
+
+
+
+Withd_df <- subscale_vars %>%
+  filter(sc1name == "Withdrawn") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc1pct, sc1t, sc1raw)
+
+names(Withd_df)[2:4] <- as.character(CBCL_names[grepl("WITH", CBCL_names)])
+head(Withd_df)
+
+
+Somatic_df <- subscale_vars %>%
+  filter(sc2name == "Somatic") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc2pct, sc2t, sc2raw)
+
+names(Somatic_df)[2:4] <- as.character(CBCL_names[grepl("SOM", CBCL_names)])
+head(Somatic_df)
+
+Thought_df <- subscale_vars %>%
+  filter(sc5name == "Thought") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc5pct, sc5t, sc5raw)
+
+names(Thought_df)[2:4] <- as.character(CBCL_names[grepl("THOU", CBCL_names)])
+head(Thought_df)
+
+
+Attention_df <- subscale_vars %>%
+  filter(sc6name == "Attention") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc6pct, sc6t, sc6raw)
+
+names(Attention_df)[2:4] <- as.character(CBCL_names[grepl("ATT", CBCL_names)])
+head(Attention_df)
+
+
+Delinquent_df <- subscale_vars %>%
+  filter(sc7name == "Delinquent") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc7pct, sc7t, sc7raw)
+
+names(Delinquent_df)[2:4] <- as.character(CBCL_names[grepl("DEL", CBCL_names)])
+head(Delinquent_df)
+
+### split across 2 variables for some reason!! 
+Int_df1 <- subscale_vars %>%
+  filter(sc9name == "Internal") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc9pct, sc9t, sc9raw)
+nrow(Int_df1)
+names(Int_df1)[2:4] <- as.character(CBCL_names[grepl("INT", CBCL_names)])
+Int_df2 <- subscale_vars %>%
+  filter(sc10name == "Internal") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc10pct, sc10t, sc10raw)
+nrow(Int_df2)
+names(Int_df2)[2:4] <- as.character(CBCL_names[grepl("INT", CBCL_names)])
+
+Int_df <- rbind(Int_df1, Int_df2)
+head(Int_df)
+nrow(Int_df)
+
+
+### split across 2 variables for some reason!! 
+Ext_df1 <- subscale_vars %>%
+  filter(sc11name == "External") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc11pct, sc11t, sc11raw)
+nrow(Ext_df1)
+names(Ext_df1)[2:4] <- as.character(CBCL_names[grepl("EXT", CBCL_names)])
+Ext_df2 <- subscale_vars %>%
+  filter(sc10name == "External") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc10pct, sc10t, sc10raw)
+nrow(Ext_df2)
+names(Ext_df2)[2:4] <- as.character(CBCL_names[grepl("EXT", CBCL_names)])
+
+Ext_df <- rbind(Ext_df1, Ext_df2)
+head(Ext_df)
+nrow(Ext_df)
+
+## split across 2 variables for some reason!! 
+Tot_df1 <- subscale_vars %>%
+  filter(sc11name == "TotProb") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc11pct, sc11t, sc11raw)
+nrow(Tot_df1)
+names(Tot_df1)[2:4] <- as.character(CBCL_names[grepl("TOTPROB", CBCL_names)])
+Tot_df2 <- subscale_vars %>%
+  filter(sc12name == "TotProb") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc12pct, sc12t, sc12raw)
+nrow(Tot_df2)
+names(Tot_df2)[2:4] <- as.character(CBCL_names[grepl("TOTPROB", CBCL_names)])
+
+Tot_df <- rbind(Tot_df1, Tot_df2)
+head(Tot_df)
+nrow(Tot_df)
+
+
+Socprob_df <- subscale_vars %>%
+  filter(sc4name == "Social") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, sc4pct, sc4t, sc11raw)
+
+names(Socprob_df)[2:4] <- as.character(CBCL_names[grepl("SOCPROB", CBCL_names)])
+head(Socprob_df)
+```
+
+
+### COMPETENCE SCALES
+```{r}
+
+scale_vars <- CBCLss_ELFK [grepl("comp", names(CBCLss_ELFK))]
+head(scale_vars)
+scale_vars$SUBJECTID <- CBCLss_ELFK$id
+
+# check the names... this is in weird long format...
+scale_names <- scale_vars[grepl("name", names(scale_vars))]
+head(scale_names)
+# important: they are not identical per column in terms of what the label is... so it's kind of problematic. 
+summary(scale_names)
+
+Socializing_df <- scale_vars %>%
+  filter(comp2name == "Social") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, comp2pct, comp2t, comp2raw)
+
+names(Socializing_df)[2:4] <- c("CBCL_4_SOC_COMP_PERC", "CBCL_4_SOC_COMP_T", "CBCL_4_SOC_COMP_RAW")
+head(Socializing_df)
+
+
+School_df <- scale_vars %>%
+  filter(comp3name == "School") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, comp3pct, comp3t, comp3raw)
+
+names(School_df)[2:4] <-  c("CBCL_4_SCHOOL_COMP_PERC", "CBCL_4_SCHOOL_COMP_T", "CBCL_4_SCHOOL_COMP_RAW")
+head(School_df)
+
+Activities_df <- scale_vars %>%
+  filter(comp1name == "Activities") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, comp1pct, comp1t, comp1raw)
+
+names(Activities_df)[2:4] <- c("CBCL_4_ACTIVITIES_COMP_PERC", "CBCL_4_ACTIVITIES_COMP_T", "CBCL_4_ACTIVITIES_COMP_RAW")
+head(Activities_df)
+
+Total_Comp_df <- scale_vars %>%
+  filter(comp4name == "Total_Comp") %>%
+  # order; percent, t, raw
+  select(SUBJECTID, comp4pct, comp4t, comp4raw)
+
+names(Total_Comp_df)[2:4] <- c("CBCL_4_TOTAL_COMP_PERC", "CBCL_4_TOTAL_COMP_T", "CBCL_4_TOTAL_COMP_RAW")
+head(Total_Comp_df)
+
+```
+
+## merge all together
+```{r}
+merge1 <- merge(Activities_df, School_df, by = "SUBJECTID", all = T)
+merge2 <- merge(merge1, Socializing_df, by = "SUBJECTID", all = T)
+merge3 <- merge(merge2, Total_Comp_df, by = "SUBJECTID", all = T)
+
+merge4 <- merge(merge3, Agg_df, by = "SUBJECTID", all = T)
+merge5 <- merge(merge4, AnxDep_df, by = "SUBJECTID", all = T)
+merge6 <- merge(merge5, Attention_df, by = "SUBJECTID", all = T)
+
+
+merge7 <- merge(merge6, Delinquent_df, by = "SUBJECTID", all = T)
+merge8 <- merge(merge7, Ext_df, by = "SUBJECTID", all = T)
+merge9 <- merge(merge8, Int_df, by = "SUBJECTID", all = T)
+
+
+merge10 <- merge(merge9, Socprob_df, by = "SUBJECTID", all = T)
+merge11 <- merge(merge10, Somatic_df, by = "SUBJECTID", all = T)
+merge12 <- merge(merge11, Thought_df, by = "SUBJECTID", all = T)
+merge13 <- merge(merge12, Withd_df, by = "SUBJECTID", all = T)
+
+merge14 <- merge(merge13, Tot_df, by = "SUBJECTID", all = T)
+names(merge14)
+```
+
+### fill 9999 with NA for subscales
+```{r}
+merge14[merge14==9999]<-NA
+
+head(merge14)
+```
+
+
+# SAVE FINAL VERSION
+```{r}
+library(haven)
+final_cbcl <- merge14
+names(final_cbcl)[1] <- "IDENT_SUBID"
+write_rds(final_cbcl,"/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/R/final_cbcl.rds")
+final_cbcl.csv<-as.data.frame(lapply(final_cbcl, as.character),stringsAsFactors=F)
+write.csv(final_cbcl.csv, "/Volumes/danl/ELFK/Data_Entry/DATA_ENTRY_MASTER/Data_Merge/03 Scored/csv/final_cbcl.csv", row.names = FALSE)
+
+```

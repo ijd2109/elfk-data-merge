@@ -1,0 +1,543 @@
+---
+title: "ELFK Merging"
+author: "Ian Douglas"
+date: "6/7/2019"
+output: html_document
+---
+
+# Intro 1: clear environment
+```{r}
+rm(list=ls())
+require(tidyverse)
+```
+
+# Intro 2: Define required functions:
+### The functions are contained in a source code file called functions.R
+### Found at the path: ... /Data_Merge/Scripts/Package/functions.R
+```{r}
+source('../Package/functions.R')
+```
+
+# 1: Load all finalized qualtrics forms
+```{r}
+q1 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/AIOI.rds")
+q2 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/bdi_final.rds") #bdi1 adn bdi2 in wide form together
+q3 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/CQ final.rds")
+q4 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/DSM_C final.rds")
+q5 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/DSM_P scored.rds")
+q6 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/final_cbcl.rds")
+q7 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/FQ_scored.rds")
+q8 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/Grit_Child.rds")
+q9 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/Grit_Parent.rds")
+q10 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/IAI.rds")
+q11 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/IF_final.rds")
+q12 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/Motivation.rds")
+q13 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/PPDS_fem_child.rds")
+q14 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/PPDS_fem_parent.rds")
+q15 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/PPDS_mal_child.rds")
+q16 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/PPDS_mal_parent.rds")
+q17 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/PQ.rds")
+q18 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/RADS_scored.rds")
+q19 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/RPQ_scored.rds")
+q20 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/SCARED.rds")
+q21 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/SS.rds")
+q22 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/STAI_state_scored.rds")
+q23 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/STAI_trait_scored.rds")
+q24 <- readRDS("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/03 Scored/R/CRPR_final.rds")
+```
+
+##data cleaning
+```{r}
+#ensure that all IDENT_SUBID are exactly identical across forms, to avoid duplicates
+for (i in 1:23) {
+  assign(paste("df", i, sep = ""),(getElement(.GlobalEnv, paste("q", i, sep = "")) %>%
+    ungroup() %>% mutate_at("IDENT_SUBID", function(x) trimws(as.character(x)))),
+    envir = .GlobalEnv)
+}
+#Next, since PQ_6A_GROCHART was used in the computation of an IAI variable, it is going to be duplicated during the merge. Delete it from the IAI
+df10 <- df10 %>% select(-PQ_6A_GROCHART)
+#create master list of suject IDs
+master.id.list <- c()
+for (i in 1:23) {
+  master.id.list <- c(master.id.list,
+                      unlist(getElement(
+                        .GlobalEnv, paste("df", i, sep = "")
+                        )[, "IDENT_SUBID"]))
+}
+master.id.list <- trimws(unique(master.id.list))
+#remove "NANA" from master.id.list
+master.id.list <- master.id.list[-which(master.id.list=="NANA")]
+```
+
+##merge them all
+```{r}
+df.merge <- data.frame("IDENT_SUBID" = master.id.list) #start with a list of all IDs
+for (i in 1:23) { #merge all the others into it
+  df.merge <- merge(df.merge, getElement(
+    .GlobalEnv, paste("df", i, sep = "") #pull data frame from global environment
+    ), by = "IDENT_SUBID", all = TRUE) #merge using "IDENT_SUBID"
+}
+```
+
+IF "any(duplicated(df.merge$IDENT_SUBID))" is "TRUE", then run the following. IF not skip.
+```{r}
+# duped <- df.merge[df.merge$IDENT_SUBID %in% df.merge$IDENT_SUBID[which(duplicated(df.merge$IDENT_SUBID))],]
+# set1 <- duped[1:2,]
+# set2 <- duped[3:4,]
+# set3 <- duped[5:6,]
+# # set4 <- duped[7:8,]
+# # set5 <- duped[9:10,]
+# # set6 <- duped[11:12,]
+# # set7 <- duped[13:14,]
+# set.list <- list(set1, set2, set3)
+# tf.matrix <- matrix(rep(NA,length.out= 3*555),ncol = 555,
+#                     dimnames = list(c(set1$IDENT_SUBID[1],set2$IDENT_SUBID[1],
+#                          set3$IDENT_SUBID[1]),names(duped)))
+# 
+# for (i in 1:length(set.list)) {
+#   for (j in 1:555) {
+#     tf.matrix[i,j] <- !identical(
+#       as.vector(unlist(set.list[[i]][j])[1]),as.vector(unlist(set.list[[i]][j])[2])
+#       )
+#   }
+# }
+# apply(tf.matrix,1,which)
+```
+
+
+##write out csv and rds files
+```{r}
+saveRDS(df.merge, "/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/04 Merged/R/Qualtrics data.rds")
+#convert all to character for .csv write-out to increase compatibility
+qualtrics.data <- df.merge
+qualtrics.data[] <- lapply(qualtrics.data, as.character)
+write.csv(qualtrics.data, "/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/04 Merged/csv/qualtrics_data.csv", row.names = FALSE)
+```
+
+# 2. Load the hand-coded interviews
+```{r}
+nq1 <- read.csv("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/FAS_coding_data_COMPLETE.csv",
+                stringsAsFactors = FALSE)
+nq2 <- readxl::read_excel("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/Post_scan_debrief.xlsx", sheet = "Responses")
+nq3 <- readxl::read_excel("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/WASI_complete.xlsx")
+nq4 <- readxl::read_excel("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/4_17_MedHealth_Extraction.xlsx", sheet="Data")
+nq5 <- read.csv("/Volumes/danl/ELFK/ELFK_Server/Questionnaires/archived_qualtrics_2018/CBCL_CLEANED/CBCL_scales_and_indiv_items_cleaned_MVT_12_2_2018.csv",
+                stringsAsFactors = FALSE)
+nq6 <- read.csv("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/saliva_time_date_long.csv",
+                stringsAsFactors = FALSE)
+# NQ7 HAS DUPLICATES upon reading in!
+nq7 <- readxl::read_excel("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/Weight_from_MRI_completed_checked.xlsx")
+# after cross referencing with the ppds, EL065 has a weight of 85, so delete the entry of 80.
+nq7 <- nq7 %>% filter(!(IDENT_SUBID == "EL065" & WEIGHT == 80))
+nq8 <- readxl::read_excel("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/KSADS_background_dx_COMPLETE_checked_BC_edited.xlsx") 
+# NQ9 HAS DUPLICATES!!!
+nq9<- readxl::read_excel("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/LifeEvents_database_AW.xlsx", sheet="LifeEventsQuestionnaire") %>%
+  rename_at("ID_NUMBER", ~sub("_.+$","ENT_SUBID", .))
+# delete one extra copy of participant EL127
+# from cross-refernce with the date of their visit, retain the first entry of EL127
+nq9 <- nq9[-tail(which(nq9$IDENT_SUBID=="EL127"), 1),]
+nq10 <- readxl::read_excel("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/Scan_debriefing_parents.xlsx", sheet="Parents_debriefing")
+nq11 <- readRDS("/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/cort_testos_crp_wide_biomarker.rds")
+```
+
+##data cleaning: replace "-8" in the medhealth questionnaire with NA
+```{r}
+#ALSO: Ensure the subject IDs are in the appropriate format
+nq1 <- nq1 %>% 
+  mutate_at(1, function(x) as.vector(as.character(x))) %>%
+  ELFK.identsubid("IDENT_SUBID") %>%
+  rename_at(1, function(x) replace(x,1,"IDENT_SUBID"))
+nq2 <- nq2 %>% 
+  mutate_at(1, function(x) as.vector(as.character(x))) %>%
+  ELFK.identsubid("IDENT_SUBID") %>%
+  rename_at(1, function(x) replace(x,1,"IDENT_SUBID"))
+nq3 <- nq3 %>% 
+  mutate_at(1, function(x) as.vector(as.character(x))) %>%
+  ELFK.identsubid("IDENT_SUBID") %>%
+  rename_at(1, function(x) replace(x,1,"IDENT_SUBID"))
+nq4 <- nq4 %>% 
+  mutate_at(1, function(x) as.vector(as.character(x))) %>%
+  ELFK.identsubid("IDENT_SUBID") %>%
+  rename_at(1, function(x) replace(x,1,"IDENT_SUBID"))
+nq5 <- nq5 %>% 
+  mutate_at(1, function(x) as.vector(as.character(x))) %>%
+  ELFK.identsubid("IDENT_SUBID") %>%
+  rename_at(1, function(x) replace(x,1,"IDENT_SUBID"))
+nq6 <- nq6 %>% 
+  mutate_at(1, function(x) as.vector(as.character(x))) %>%
+  ELFK.identsubid("IDENT_SUBID") %>%
+  rename_at(1, function(x) replace(x,1,"IDENT_SUBID"))
+nq7 <- nq7 %>% 
+  mutate_at(1, function(x) as.vector(as.character(x))) %>%
+  ELFK.identsubid("IDENT_SUBID") %>%
+  rename_at(1, function(x) replace(x,1,"IDENT_SUBID"))
+nq8 <- nq8 %>% 
+  mutate_at(1, function(x) as.vector(as.character(x))) %>%
+  ELFK.identsubid("IDENT_SUBID") %>%
+  rename_at(1, function(x) replace(x,1,"IDENT_SUBID"))
+nq9 <- nq9 %>% 
+  mutate_at(1, function(x) as.vector(as.character(x))) %>%
+  ELFK.identsubid("IDENT_SUBID") %>%
+  rename_at(1, function(x) replace(x,1,"IDENT_SUBID"))
+  #compute LEQ_MAX_IMPACT
+nq9$LEQ_MAX_IMPACT<- apply(
+  nq9[grep("IMPACT",names(nq9))], 1, function(x) max(x,na.rm = TRUE)) %>%
+  replace(.,is.infinite(.),NA_integer_)
+nq9$LEQ_MEAN_IMPACT <- apply(
+    nq9[grep("IMPACT",names(nq9))], 1, function(x) mean(x,na.rm = TRUE)) %>%
+    replace(.,is.nan(.),NA_integer_)
+nq10 <- nq10 %>% 
+  mutate_at(1, function(x) as.vector(as.character(x))) %>%
+  ELFK.identsubid("IDENT_SUBID") %>%
+  rename_at(1, function(x) replace(x,1,"IDENT_SUBID"))
+nq11 <- nq11 %>% 
+  mutate_at(1, function(x) as.vector(as.character(x))) %>%
+  ELFK.identsubid("IDENT_SUBID") %>%
+  rename_at(1, function(x) replace(x,1,"IDENT_SUBID"))
+
+nq4[] <- lapply(nq4, function(x) replace(x, x == -8, NA))
+#create master list of subject IDs
+nq.master.id.list <- c()
+for (i in 1:8) {
+  nq.master.id.list <- c(nq.master.id.list,
+                      unlist(getElement(
+                        .GlobalEnv, paste("nq", i, sep = "")
+                        )[, "IDENT_SUBID"]))
+}
+nq.master.id.list <- trimws(unique(nq.master.id.list))
+#remove test/mock data that was left in the dataset
+nq.master.id.list <- nq.master.id.list[
+  which(as.numeric(sub("EL","",nq.master.id.list))<170)
+  ]
+#change the names of the child debrief variables (to distinguish w/ parent version)
+nq2 <- nq2 %>%
+  rename_at(-1,toupper) %>% 
+  rename_at(-1, function(x) paste0("CHILD_",x))
+
+nq10 <- nq10 %>%
+  rename_at(-1,toupper) %>% 
+  rename_at(-1, function(x) paste0("PARENT_",x))
+
+#ignore warning messages
+```
+
+##convert nq6 to wide format (from long)
+```{r}
+d_wide <- data.frame("IDENT_SUBID" = unique(nq6$IDENT_SUBID),
+                     "IN_LAB_1_DATE" = NA,
+                     "IN_LAB_2_DATE" = NA,
+                     "PRE_MRI_DATE" = NA,
+                     "POST_MRI_DATE" = NA,
+                     "IN_LAB_1_TIME" = NA,
+                     "IN_LAB_2_TIME" = NA,
+                     "PRE_MRI_TIME" = NA,
+                     "POST_MRI_TIME" = NA)
+#pull in the info conditional on values of "sample_type"
+for (i in seq_along(d_wide$IDENT_SUBID)) {
+  who <- d_wide$IDENT_SUBID[i]
+  if (any(nq6[nq6$IDENT_SUBID == who, "sample_type"] == 1)) {
+    d_wide[
+      d_wide$IDENT_SUBID == who, c("IN_LAB_1_DATE","IN_LAB_1_TIME")
+      ] <- nq6[
+        nq6$IDENT_SUBID == who & nq6$sample_type == 1, 
+        c("date_sample","time_sample_military")
+        ]
+  }
+  if (any(nq6[nq6$IDENT_SUBID == who, "sample_type"] == 2)) {
+    d_wide[
+      d_wide$IDENT_SUBID == who, c("IN_LAB_2_DATE","IN_LAB_2_TIME")
+      ] <- nq6[
+        nq6$IDENT_SUBID == who & nq6$sample_type == 2, 
+        c("date_sample","time_sample_military")
+        ]
+  }
+  if (any(nq6[nq6$IDENT_SUBID == who, "sample_type"] == 3)) {
+    d_wide[
+      d_wide$IDENT_SUBID == who, c("PRE_MRI_DATE","PRE_MRI_TIME")
+      ] <- nq6[
+        nq6$IDENT_SUBID == who & nq6$sample_type == 3, 
+        c("date_sample","time_sample_military")
+        ]
+  }
+  if (any(nq6[nq6$IDENT_SUBID == who, "sample_type"] == 4)) {
+    d_wide[
+      d_wide$IDENT_SUBID == who, c("POST_MRI_DATE","POST_MRI_TIME")
+      ] <- nq6[
+        nq6$IDENT_SUBID == who & nq6$sample_type == 4, 
+        c("date_sample","time_sample_military")
+        ]
+  }
+}
+#replace object 'nq6' with the new version
+nq6 <- d_wide
+```
+
+##merge them all
+```{r}
+ndf.merge <- data.frame("IDENT_SUBID" = as.character(
+  nq.master.id.list)) #start with the df of just IDENT_SUBID's
+ndf.merge$IDENT_SUBID <- as.vector(as.character(ndf.merge$IDENT_SUBID))
+for (i in 1:10) { #merge all the others into it
+  ndf.merge <- merge(ndf.merge, getElement(
+    .GlobalEnv, paste0("nq", i) #pull data frame from global environment
+    ), by = "IDENT_SUBID", all = TRUE) #merge using "IDENT_SUBID"
+}
+```
+
+##write out csv and rds files
+```{r}
+saveRDS(ndf.merge, "/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/04 Merged/R/interview data.rds")
+#convert all to character for .csv write-out to increase compatibility
+form.data <- ndf.merge
+form.data[] <- lapply(form.data, as.character)
+write.csv(form.data, "/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Data_Merge/data/04 Merged/csv/interview_data.csv", row.names = FALSE)
+```
+
+# 3. Read in the family codes
+```{r}
+demog <- read.csv("/Volumes/danl/ELFK/ELFK_Server/DATA_ENTRY_MASTER/Finalized_copies_to_be_merged/ELFK_Demo_11_14_2018.csv", stringsAsFactors = FALSE)
+#rename desired variables
+names(demog) <- names(demog) %>%
+  replace(names(demog) == "Subject.ID","IDENT_SUBID") %>%
+  replace(names(demog) == "Group..0.control..1.PI.", "GROUP") %>%
+  replace(names(demog) == "Age", "BEHAV_AGE") %>%
+  replace(names(demog) == "Behav.Date", "BEHAV_DATE") %>%
+  replace(names(demog) == "MRI.Date", "MRI_DATE") %>%
+  replace(names(demog) == "sex", "SEX") %>%
+  replace(names(demog) == "mri.age", "MRI_AGE")
+#retain desired variables
+demog2 <- demog %>%
+  select(IDENT_SUBID,GROUP,SEX,DOB,BEHAV_DATE,BEHAV_AGE,MRI_DATE,MRI_AGE,Family_code) %>%
+  #compute binary GROUP var
+  mutate(ADOPT_YN = ifelse(GROUP == 0, 0, 1))
+```
+
+# 4. Merge the Qualtrics data with the form data, then attach demographics w/ family code
+```{r}
+#(A) Merge the Qualtrics and form data
+master <- merge(df.merge,ndf.merge,by = "IDENT_SUBID",all=FALSE)
+#(B) Merge demographics + family code
+master2 <- merge(master,demog2,by = "IDENT_SUBID",all=FALSE)
+```
+
+# 5. 'impute' the data based on family code
+```{r}
+#subset data frame based on variables that we want to impute based upon fam code
+df.parent_vars <- master2[,c(
+  grep("IDENT_SUBID", names(master2)),
+  grep("^AIOI", names(master2)),
+  grep("^PARENT", names(master2)),
+  grep("Family_code",names(master2)))]
+#remove parent-specific date variables, since they will ultimately be deleted anyway
+df.parent_vars<-df.parent_vars[,-grep("DATE",names(df.parent_vars))]
+
+#obtain a list of every unique family code
+duped.fam_code <- unique(
+  df.parent_vars$Family_code[
+    duplicated(df.parent_vars$Family_code)
+    ]
+  )
+# instantiate function to fill a row based on criteria 
+# that a row is related to another via Family_code, and is also currently missing data
+fill <- function(column) {
+  if (any(is.na(column))) {
+    new <- replace(column, is.na(column), column[!is.na(column)][1])
+    return(new)
+  } else
+    return(column)
+}
+#use function to fill in data for siblings
+for (i in seq_along(duped.fam_code)) {
+  dat <- df.parent_vars[df.parent_vars$Family_code == duped.fam_code[i],]
+  dat[] <- lapply(dat, fill)
+  df.parent_vars[df.parent_vars$Family_code == duped.fam_code[i],] <- dat
+}
+```
+#substitute the corrected data back into the master data frame from which it was extracted
+```{r}
+master2[,names(df.parent_vars)] <- df.parent_vars
+```
+#Coalesce the duplicates that resulted in multiples of the CBCL variables
+```{r}
+a<-cbind(extr("\\.x$",names(master2)),extr("\\.y$",names(master2)))
+b<-as.data.frame(
+  matrix(
+    apply(a, 1, function(x) {
+      coalesce(master2[,x[1]],master2[,x[2]])
+      }), ncol = nrow(a),
+    dimnames = list(NULL,gsub("\\.x","",a[,1]))
+    )
+  )
+```
+#Insert them in place of the duplicated CBCL variables; reorder
+```{r}
+master3 <- cbind(
+  master2[-c(grep("\\.x$",names(master2)), grep("\\.y$",names(master2)))], b
+) %>% #put CBCL variables adjacent to one another
+  select(IDENT_SUBID, starts_with("CBCL"), everything())
+```
+
+#6. Merge in race from the demographic form
+### Note, most demographic information is already merged into the master. This following merging step is for the purposes of merging the race variable only.
+```{r}
+raceDemos = read.csv("/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/data/01 Raw/QUALTRICS/Parent/Demographics_2020_01_06.csv", stringsAsFactors = FALSE)
+
+# Previous scanning through the data concluded that several rows should be deleted as they were test data, and a couple other errors occurred and are included in the list of indices to remove.
+# This also includes the first three rows of the qualtrics form which has unneccessary output.
+
+#implemented as follows:
+to_remove = unique(c(
+  1:(grep("^EL001$", raceDemos$Q1) - 1), 
+  grep("^007\\/16\\/", raceDemos$Q1),
+  grep("^test$", raceDemos$Q1),
+  grep("^9{3}", raceDemos$Q1),
+  grep("^ghgh$", raceDemos$Q1),
+  grep("^EL0999$", raceDemos$Q1),
+  grep("^m$", raceDemos$Q1)
+))
+
+raceDemos.1 = raceDemos[-to_remove, ]
+```
+
+## Evaluate duplicates
+### Code required to conduct visual analysis of dupliated reproduced and hashed out below (not run)
+## Actual code required to eradicate duplicates is run below:
+```{r}
+#View(id.search(raceDemos.1, "Q1", "StartDate"))
+
+# (1) Recode el06lp to el061p to prevent duplication of EL006
+raceDemos.1$Q1[grep("^el06lp$",raceDemos.1$Q1)] <- "EL061"
+# (2) Recode ELI28P to EL128P to prevent duplication of EL028
+raceDemos.1$Q1[grep("^ELI28P$",raceDemos.1$Q1)] <- "EL128P"
+
+### Now re-run id.search()
+#View(id.search(raceDemos.1, "Q1", "StartDate"))
+
+# (3) Most duplicates appear to result when the parent answered the form w.r.t. their own race
+### In many cases this was flagged with a 'p' or 'P', so delete those.
+raceDemos.1 <- raceDemos.1[-grep("p", raceDemos.1$Q1, ignore.case = TRUE), ]
+
+### Now re-run id.search()
+#View(id.search(raceDemos.1, "Q1", "StartDate"))
+
+# (4) One entry containing the word 'child' indicates it is the one referring to the child.
+### Delete the corresponding entry for the parent
+raceDemos.1 <- raceDemos.1[-which(grepl("el070", raceDemos.1$Q1) & !grepl("child", raceDemos.1$Q1)), ]
+
+# (5) ELI24 should be recoded: EL124
+raceDemos.1$Q1[grep("ELI24", raceDemos.1$Q1)] <- "EL124"
+
+### Now re-run id.search()
+#View(id.search(raceDemos.1, "Q1", "StartDate"))
+
+# (6) Now for duplicates with two entries, select the more recent one
+idSearch <- id.search(raceDemos.1, "Q1","StartDate")
+idSearch2 = idSearch %>% filter(is.na(Timestamp.3))
+to_remove <- NULL
+for (i in 1:nrow(idSearch2)) {
+  min.date = which.min(as.Date(unlist(idSearch2[i, c("Timestamp.1", "Timestamp.2")])))
+  if (min.date == 1) {
+    who <- idSearch2$Raw.entry.1[i]; when <- idSearch2$Timestamp.1[i]
+    to_remove[i] <- which(raceDemos.1$Q1==who & raceDemos.1$StartDate==when)
+  } else {
+    who <- idSearch2$Raw.entry.2[i]; when <- idSearch2$Timestamp.2[i]
+    to_remove[i] <- which(raceDemos.1$Q1==who & raceDemos.1$StartDate==when)
+  }
+}
+# Now remove these duplicates found
+raceDemos.1 <- raceDemos.1[-to_remove, ]
+rm("idSearch2")
+
+### Now re-run id.search()
+#View(id.search(raceDemos.1, "Q1", "StartDate"))
+
+# (7) Now use the gender from the (previously confirmed) master to cross-reference.
+## Discrepancies indicate a parent entered their own demographics
+idSearch <- id.search(raceDemos.1, "Q1", "StartDate")
+raceDemos_dupFiltered = raceDemos.1 %>% 
+  filter(Q1 %in% unique(c(idSearch$Raw.entry.1, idSearch$Raw.entry.2, idSearch$Raw.entry.3)))
+# add the ident subid's that would be created
+raceDemos_dupFiltered$IDENT_SUBID = ELFK.identsubid(raceDemos_dupFiltered, "Q1")$Q1
+# consult the gender of the kid from the master created above
+raceDemos_dupFiltered <- merge(select(raceDemos_dupFiltered, IDENT_SUBID, Q1, StartDate, Q4),
+                               master3[, c("IDENT_SUBID", "SEX")], by = "IDENT_SUBID") %>%
+  mutate_at(vars(SEX), ~ifelse(. == "m", "Male", "Female"))
+#Locate and delete these entries from the 'raceDemos.1' data
+to_remove = c()
+for (i in 1:nrow(raceDemos_dupFiltered)) {
+  if (raceDemos_dupFiltered$Q4[i] != raceDemos_dupFiltered$SEX[i]) {
+    who <- raceDemos_dupFiltered$Q1[i]; when <- raceDemos_dupFiltered$StartDate[i]
+    to_remove <- c(to_remove, which(raceDemos.1$Q1==who & raceDemos.1$StartDate==when))
+  }
+}
+# delete the rows found:
+raceDemos.1 <- raceDemos.1[-to_remove, ]
+
+# (8) This created a smaller list of duplicates (excluding triplicates).
+# Re-run the algorithm to select the more recent entry.
+idSearch <- id.search(raceDemos.1, "Q1","StartDate")
+idSearch2 = idSearch %>% filter(is.na(Timestamp.3))
+to_remove <- NULL
+for (i in 1:nrow(idSearch2)) {
+  min.date = which.min(as.Date(unlist(idSearch2[i, c("Timestamp.1", "Timestamp.2")])))
+  if (min.date == 1) {
+    who <- idSearch2$Raw.entry.1[i]; when <- idSearch2$Timestamp.1[i]
+    to_remove[i] <- which(raceDemos.1$Q1==who & raceDemos.1$StartDate==when)
+  } else {
+    who <- idSearch2$Raw.entry.2[i]; when <- idSearch2$Timestamp.2[i]
+    to_remove[i] <- which(raceDemos.1$Q1==who & raceDemos.1$StartDate==when)
+  }
+}
+# Now remove these duplicates found
+raceDemos.1 <- raceDemos.1[-to_remove, ]
+rm("idSearch2")
+
+### Now re-run id.search()
+#View(id.search(raceDemos.1, "Q1", "StartDate"))
+
+# (9) This leaves two final triplicates. 
+### Based on visual investigation, the following were deemed to be the erroneous entries.
+to_remove = c(
+  which(raceDemos.1$Q1=="elo88"), 
+  which(raceDemos.1$Q1=="EL088" & raceDemos.1$Q3=="03/24/1986"),
+  which(raceDemos.1$Q1=="103")
+)
+# remove the rows identified
+raceDemos.1 <- raceDemos.1[-to_remove, ]
+```
+
+All duplicates are removed.
+## Proceed to select the columns desired, format the date, and format the IDENT_SUBID
+## Correct the names
+```{r}
+raceDemos.2 <- raceDemos.1 %>% ELFK.identsubid("Q1") %>% format.date("RecordedDate") %>%
+  rename_at("Q1", ~sub("Q1", "IDENT_SUBID", .)) %>%
+  # drop unwanted variables:
+  ### Q2 is the user-entered date which we will take from Qualtrics output instead
+  ### Q3 is the date of birth, which we will merge from the master, and do not want to duplicate
+  ### Q4 refers to gender which we also have in the master already
+  select(IDENT_SUBID, Q5:Q8)
+names(raceDemos.2) <- c(
+  "IDENT_SUBID", "DEM_4_RACE_CHILD", "DEM_4_RACE_CHILD_OTHER",
+  "DEM_5_ETHNICITY", "DEM_6_NUMOLDSIBS", "DEM_7_NUMYOUNGSIBS" 
+)
+```
+
+# Finally, merge this small data frame with the race/ethnicity data into the master
+```{r}
+master4 = left_join(master3, raceDemos.2, by = "IDENT_SUBID")
+```
+
+# 7. Write out the data entry master files
+```{r}
+saveRDS(master4, "/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/data/04 Merged/R/ELFK_Master_Data.rds")
+```
+
+# 8. Write out CSV and SPSS files
+```{r}
+write.csv(master4,"/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/data/04 Merged/csv/ELFK_Master_Data.csv", row.names = FALSE)
+haven::write_sav(master4,"/Volumes/danl/ELFK/ELFK_server/DATA_ENTRY_MASTER/Data_Merge/data/04 Merged/SPSS/ELFK_Master_Data.sav")
+```
+
+
+
